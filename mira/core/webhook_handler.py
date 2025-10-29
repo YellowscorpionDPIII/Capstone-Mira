@@ -50,7 +50,7 @@ class WebhookHandler:
                     
             except Exception as e:
                 self.logger.error(f"Error handling webhook: {e}")
-                return jsonify({'error': str(e)}), 500
+                return jsonify({'error': 'Internal server error'}), 500
                 
     def _verify_signature(self, payload: bytes, signature: str) -> bool:
         """
