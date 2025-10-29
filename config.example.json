@@ -1,0 +1,60 @@
+{
+  "broker": {
+    "enabled": true,
+    "queue_size": 1000
+  },
+  "webhook": {
+    "enabled": false,
+    "host": "0.0.0.0",
+    "port": 5000,
+    "secret_key": null
+  },
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  },
+  "integrations": {
+    "trello": {
+      "enabled": false,
+      "api_key": null,
+      "api_token": null,
+      "board_id": null
+    },
+    "jira": {
+      "enabled": false,
+      "url": null,
+      "username": null,
+      "api_token": null,
+      "project_key": null
+    },
+    "github": {
+      "enabled": false,
+      "token": null,
+      "repository": null
+    },
+    "airtable": {
+      "enabled": false,
+      "api_key": null,
+      "base_id": null
+    },
+    "google_docs": {
+      "enabled": false,
+      "credentials_path": null,
+      "folder_id": null
+    }
+  },
+  "agents": {
+    "project_plan_agent": {
+      "enabled": true
+    },
+    "risk_assessment_agent": {
+      "enabled": true
+    },
+    "status_reporter_agent": {
+      "enabled": true
+    },
+    "orchestrator_agent": {
+      "enabled": true
+    }
+  }
+}
