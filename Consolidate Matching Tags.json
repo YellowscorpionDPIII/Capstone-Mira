@@ -1,0 +1,170 @@
+{
+  "name": "Consolidate Matching Tags",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "9a7afc1f-30a2-454e-87c7-6f43d5926280",
+      "name": "Start Workflow",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "tagsApiUrl",
+              "value": "<__PLACEHOLDER_VALUE__API endpoint URL for tags data__>",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "tagFieldName",
+              "value": "tag",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "60ef8684-5f73-4d1c-a718-f0b994582e72",
+      "name": "Workflow Configuration",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Workflow Configuration').first().json.tagsApiUrl }}",
+        "options": {
+          "response": {
+            "response": {}
+          }
+        }
+      },
+      "id": "bd9a5a7d-45ac-4562-a2aa-890e00531f29",
+      "name": "Fetch Tags Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        448,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst tagFieldName = $('Workflow Configuration').first().json.tagFieldName;\n\n// Group items by matching tags\nconst tagGroups = {};\n\nitems.forEach((item, index) => {\n  const tagValue = item.json[tagFieldName];\n  \n  if (tagValue) {\n    if (!tagGroups[tagValue]) {\n      tagGroups[tagValue] = {\n        tag: tagValue,\n        count: 0,\n        items: []\n      };\n    }\n    tagGroups[tagValue].count++;\n    tagGroups[tagValue].items.push(item.json);\n  }\n});\n\n// Convert to array and return\nconst result = Object.values(tagGroups).map(group => ({\n  json: group\n}));\n\nreturn result;"
+      },
+      "id": "dd442db4-1a34-4b65-ab31-de80b618939c",
+      "name": "Group Matching Tags",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "consolidatedTag",
+              "value": "={{ $json.tag }}",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "totalOccurrences",
+              "value": "={{ $json.count }}",
+              "type": "number"
+            },
+            {
+              "id": "id-3",
+              "name": "allMatchingItems",
+              "value": "={{ $json.items }}",
+              "type": "array"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "1e7ff368-b342-45ea-9ae2-02ee09ec2755",
+      "name": "Format Consolidated Output",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        896,
+        0
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Start Workflow": {
+      "main": [
+        [
+          {
+            "node": "Workflow Configuration",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Workflow Configuration": {
+      "main": [
+        [
+          {
+            "node": "Fetch Tags Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Tags Data": {
+      "main": [
+        [
+          {
+            "node": "Group Matching Tags",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Group Matching Tags": {
+      "main": [
+        [
+          {
+            "node": "Format Consolidated Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "6e53838e-9e8a-46e7-8ddd-b3e1143fbdcb",
+  "meta": {
+    "instanceId": "50dac87d9f41a0da6233f80c3625c88bf6c1315f4ece1a9b0171a59aabc723aa"
+  },
+  "id": "iLaFHg7RdRb1MwVI",
+  "tags": []
+}
