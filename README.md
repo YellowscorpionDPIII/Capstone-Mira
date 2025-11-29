@@ -76,6 +76,11 @@ See [DOCUMENTATION.md](DOCUMENTATION.md) for comprehensive documentation includi
 - Architecture overview
 - Extension guide
 
+### Wiki
+
+Additional documentation is available in our [Wiki](docs/wiki/Home.md):
+- [Localization Guide](docs/wiki/Localization.md) - Setup, contribution guidelines, and adding new languages
+
 ## 🧪 Testing
 
 ```bash
@@ -124,6 +129,8 @@ Capstone-Mira/
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+- **Translations**: Help make Mira available in more languages - see our [Localization Guide](docs/wiki/Localization.md)
 
 ## 📄 License
 
