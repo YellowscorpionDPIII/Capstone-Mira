@@ -21,7 +21,7 @@ class OrchestratorConfig(BaseSettings):
     # Config file override
     config_path: str = "config/orchestrator_config.yaml"
     
-    def __post_init__(self):
+    def model_post_init(self, __context):
         self.load_yaml_config()
     
     def load_yaml_config(self):
