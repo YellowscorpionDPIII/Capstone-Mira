@@ -12,55 +12,11 @@ from mira.agents.orchestrator_agent import OrchestratorAgent
 
 
 # ============================================================================
-# FIXTURES - Reusable test fixtures for mocking dependencies
+# CONSTANTS
 # ============================================================================
 
-@pytest.fixture
-def project_plan_agent():
-    """Fixture for ProjectPlanAgent."""
-    return ProjectPlanAgent()
-
-
-@pytest.fixture
-def risk_assessment_agent():
-    """Fixture for RiskAssessmentAgent."""
-    return RiskAssessmentAgent()
-
-
-@pytest.fixture
-def status_reporter_agent():
-    """Fixture for StatusReporterAgent."""
-    return StatusReporterAgent()
-
-
-@pytest.fixture
-def orchestrator_agent():
-    """Fixture for OrchestratorAgent with registered agents."""
-    orchestrator = OrchestratorAgent()
-    orchestrator.register_agent(ProjectPlanAgent())
-    orchestrator.register_agent(RiskAssessmentAgent())
-    orchestrator.register_agent(StatusReporterAgent())
-    return orchestrator
-
-
-@pytest.fixture
-def mock_llm_response():
-    """Fixture for mocking LLM server responses."""
-    return {
-        'status': 'success',
-        'data': {'generated_text': 'Test LLM response'}
-    }
-
-
-@pytest.fixture
-def valid_project_data():
-    """Fixture for valid project data."""
-    return {
-        'name': 'Test Project',
-        'description': 'A test project description',
-        'goals': ['Goal 1', 'Goal 2', 'Goal 3'],
-        'duration_weeks': 12
-    }
+# Maximum nesting depth for deeply nested data structure tests
+MAX_NESTING_DEPTH = 50
 
 
 # ============================================================================
@@ -935,48 +891,31 @@ class TestNetworkFailures(unittest.TestCase):
         """Test handling of simulated API timeout."""
         agent = ProjectPlanAgent()
         
-        # Simulate a timeout by making the internal method raise an exception
-        original_method = agent._generate_plan
-        
-        def timeout_simulation(data):
-            raise TimeoutError("Connection timed out")
-        
-        agent._generate_plan = timeout_simulation
-        
-        message = {
-            'type': 'generate_plan',
-            'data': {'name': 'Test'}
-        }
-        
-        response = agent.process(message)
-        
-        self.assertEqual(response['status'], 'error')
-        self.assertIn('timed out', response['error'])
-        
-        # Restore original method
-        agent._generate_plan = original_method
+        with patch.object(agent, '_generate_plan', side_effect=TimeoutError("Connection timed out")):
+            message = {
+                'type': 'generate_plan',
+                'data': {'name': 'Test'}
+            }
+            
+            response = agent.process(message)
+            
+            self.assertEqual(response['status'], 'error')
+            self.assertIn('timed out', response['error'])
     
     def test_simulated_http_502_error(self):
         """Test handling of simulated HTTP 502 error."""
         agent = RiskAssessmentAgent()
         
-        def http_502_simulation(data):
-            raise ConnectionError("HTTP 502 Bad Gateway")
-        
-        original_method = agent._assess_risks
-        agent._assess_risks = http_502_simulation
-        
-        message = {
-            'type': 'assess_risks',
-            'data': {'name': 'Test'}
-        }
-        
-        response = agent.process(message)
-        
-        self.assertEqual(response['status'], 'error')
-        self.assertIn('502', response['error'])
-        
-        agent._assess_risks = original_method
+        with patch.object(agent, '_assess_risks', side_effect=ConnectionError("HTTP 502 Bad Gateway")):
+            message = {
+                'type': 'assess_risks',
+                'data': {'name': 'Test'}
+            }
+            
+            response = agent.process(message)
+            
+            self.assertEqual(response['status'], 'error')
+            self.assertIn('502', response['error'])
     
     def test_retry_logic_mock(self):
         """Test that errors are properly caught and reported."""
@@ -989,27 +928,23 @@ class TestNetworkFailures(unittest.TestCase):
                 raise ConnectionError("Connection refused")
             return {'report': 'success'}
         
-        original_method = agent._generate_report
-        agent._generate_report = failing_then_success
-        
-        message = {
-            'type': 'generate_report',
-            'data': {'name': 'Test', 'tasks': [], 'milestones': [], 'risks': []}
-        }
-        
-        # First call should fail
-        response = agent.process(message)
-        self.assertEqual(response['status'], 'error')
-        
-        # Second call should still fail
-        response = agent.process(message)
-        self.assertEqual(response['status'], 'error')
-        
-        # Third call should succeed
-        response = agent.process(message)
-        self.assertEqual(response['status'], 'success')
-        
-        agent._generate_report = original_method
+        with patch.object(agent, '_generate_report', side_effect=failing_then_success):
+            message = {
+                'type': 'generate_report',
+                'data': {'name': 'Test', 'tasks': [], 'milestones': [], 'risks': []}
+            }
+            
+            # First call should fail
+            response = agent.process(message)
+            self.assertEqual(response['status'], 'error')
+            
+            # Second call should still fail
+            response = agent.process(message)
+            self.assertEqual(response['status'], 'error')
+            
+            # Third call should succeed
+            response = agent.process(message)
+            self.assertEqual(response['status'], 'success')
 
 
 # ============================================================================
@@ -1064,10 +999,10 @@ class TestResourceConstraints(unittest.TestCase):
         """Test handling of deeply nested data structures."""
         agent = ProjectPlanAgent()
         
-        # Create nested data structure
+        # Create nested data structure using MAX_NESTING_DEPTH constant
         nested_data = {'level': 0}
         current = nested_data
-        for i in range(50):
+        for i in range(MAX_NESTING_DEPTH):
             current['nested'] = {'level': i + 1}
             current = current['nested']
         

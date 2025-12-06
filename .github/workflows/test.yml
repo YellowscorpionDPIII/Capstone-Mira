@@ -6,9 +6,15 @@ on:
   pull_request:
     branches: [ main, master ]
 
+# Restrict permissions for security
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     strategy:
       matrix:
         python-version: ['3.9', '3.10', '3.11', '3.12']
@@ -41,6 +47,8 @@ jobs:
   coverage-gate:
     runs-on: ubuntu-latest
     needs: test
+    permissions:
+      contents: read
     steps:
     - uses: actions/checkout@v4
     
