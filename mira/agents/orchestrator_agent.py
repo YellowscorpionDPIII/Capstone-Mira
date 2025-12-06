@@ -2,6 +2,24 @@
 from typing import Dict, Any, Optional
 from mira.core.base_agent import BaseAgent
 from mira.core.message_broker import get_broker
+from config import config
+import asyncio
+import logging
+
+
+async def call_llm(prompt: str, model: str = None):
+    client = config.llm_client()
+    model = model or config.models.orchestrator
+    response = await asyncio.get_event_loop().run_in_executor(
+        None,
+        lambda: client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=config.prompts.max_tokens,
+            temperature=config.prompts.temperature
+        )
+    )
+    return response.choices[0].message.content
 
 
 class OrchestratorAgent(BaseAgent):
