@@ -1,0 +1,41 @@
+# config/orchestrator_config.yaml
+models:
+  orchestrator: "gpt-4o"
+  router: "gpt-4o-mini"
+  subagents: "gpt-4o-mini"
+  judge: "gpt-4o-mini"
+  
+openai:
+  base_url: "https://api.openai.com/v1"
+  timeout: 60
+  max_retries: 3
+  
+prompts:
+  task_router: |
+    Classify task complexity: easy/medium/hard. Return JSON: {"complexity": "easy|medium|hard", "reason": "brief explanation"}
+  delegation: |
+    Delegate to {{agent_type}}: {{task_description}}. Use tools: {{tools}}. Return JSON response.
+  max_tokens: 4000
+  temperature: 0.1
+  
+retries:
+  subagent: 
+    max_attempts: 3
+    backoff_multiplier: 2
+    max_backoff: 30
+  tool_call:
+    max_attempts: 2
+    backoff_multiplier: 1.5
+  
+mcp:
+  endpoint: "http://localhost:8000/mcp"
+  timeout: 30
+  auth_token: "${MCP_AUTH_TOKEN}"
+  
+logging:
+  level: "INFO"
+  json_format: true
+  
+n8n:
+  webhook_url: "${N8N_WEBHOOK_URL}"
+  workflow_id: "mira-orchestrator"
