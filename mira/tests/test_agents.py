@@ -1,4 +1,6 @@
 """Tests for core agent functionality."""
+import asyncio
+import concurrent.futures
 import unittest
 from mira.agents.project_plan_agent import ProjectPlanAgent
 from mira.agents.risk_assessment_agent import RiskAssessmentAgent
@@ -330,8 +332,6 @@ class TestOrchestratorAgentAsync(unittest.TestCase):
     
     def test_async_process(self):
         """Test async process method."""
-        import asyncio
-        
         message = {
             'type': 'generate_plan',
             'data': {
@@ -346,8 +346,6 @@ class TestOrchestratorAgentAsync(unittest.TestCase):
     
     def test_async_route_message(self):
         """Test async route message method."""
-        import asyncio
-        
         message = {
             'type': 'assess_risks',
             'data': {
@@ -363,8 +361,6 @@ class TestOrchestratorAgentAsync(unittest.TestCase):
     
     def test_async_workflow_execution(self):
         """Test async workflow execution."""
-        import asyncio
-        
         data = {
             'workflow_type': 'project_initialization',
             'data': {
@@ -395,8 +391,6 @@ class TestOrchestratorAgentConcurrency(unittest.TestCase):
     
     def test_concurrent_message_processing(self):
         """Test concurrent message processing with ThreadPoolExecutor."""
-        import concurrent.futures
-        
         messages = [
             {
                 'type': 'generate_plan',
@@ -421,8 +415,6 @@ class TestOrchestratorAgentConcurrency(unittest.TestCase):
     
     def test_concurrent_different_message_types(self):
         """Test concurrent processing of different message types."""
-        import concurrent.futures
-        
         messages = [
             {
                 'type': 'generate_plan',
@@ -450,8 +442,6 @@ class TestOrchestratorAgentConcurrency(unittest.TestCase):
     
     def test_concurrent_workflow_and_single_messages(self):
         """Test concurrent workflow and single message processing."""
-        import concurrent.futures
-        
         workflow_message = {
             'type': 'workflow',
             'data': {
@@ -488,8 +478,6 @@ class TestOrchestratorAgentConcurrency(unittest.TestCase):
     
     def test_agent_registry_thread_safety(self):
         """Test that agent registry access is thread-safe during concurrent operations."""
-        import concurrent.futures
-        
         def register_and_process(agent_num):
             agent = ProjectPlanAgent(agent_id=f"temp_agent_{agent_num}")
             # Note: In real concurrent scenarios, we'd need synchronization

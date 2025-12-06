@@ -1,8 +1,29 @@
 """OrchestratorAgent for routing messages between agents."""
 import asyncio
+import concurrent.futures
 from typing import Dict, Any, Optional
 from mira.core.base_agent import BaseAgent
 from mira.core.message_broker import get_broker
+
+
+def _run_async_with_fallback(coro):
+    """
+    Run an async coroutine, handling nested event loops gracefully.
+    
+    Args:
+        coro: Coroutine to run
+        
+    Returns:
+        Result of the coroutine
+    """
+    try:
+        return asyncio.run(coro)
+    except RuntimeError as e:
+        if "cannot be called from a running event loop" in str(e):
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(asyncio.run, coro)
+                return future.result()
+        raise
 
 
 class OrchestratorAgent(BaseAgent):
@@ -19,7 +40,6 @@ class OrchestratorAgent(BaseAgent):
         self.broker = get_broker()
         self.agent_registry: Dict[str, BaseAgent] = {}
         self.routing_rules = self._initialize_routing_rules()
-        self._lock = asyncio.Lock()
         
     def _initialize_routing_rules(self) -> Dict[str, str]:
         """
@@ -75,15 +95,7 @@ class OrchestratorAgent(BaseAgent):
         Returns:
             Response from the target agent
         """
-        try:
-            return asyncio.run(self.process_async(message))
-        except RuntimeError as e:
-            if "cannot be called from a running event loop" in str(e):
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(asyncio.run, self.process_async(message))
-                    return future.result()
-            raise
+        return _run_async_with_fallback(self.process_async(message))
     
     async def process_async(self, message: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -147,15 +159,7 @@ class OrchestratorAgent(BaseAgent):
         Returns:
             Response from target agent
         """
-        try:
-            return asyncio.run(self._route_message_async(message))
-        except RuntimeError as e:
-            if "cannot be called from a running event loop" in str(e):
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(asyncio.run, self._route_message_async(message))
-                    return future.result()
-            raise
+        return _run_async_with_fallback(self._route_message_async(message))
     
     async def _route_message_async(self, message: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -197,19 +201,18 @@ class OrchestratorAgent(BaseAgent):
             )
             return self.create_response('error', None, f'Agent not found: {target_agent_id}')
         
-        # Use lock to ensure thread-safe access during routing
-        async with self._lock:
-            # Route message to target agent
-            self.logger.info(
-                f"Routing message: type={message_type}, target={target_agent_id}, "
-                f"orchestrator={self.agent_id}"
-            )
-            
-            # Check if target agent has async process method
-            if hasattr(target_agent, 'process_async'):
-                response = await target_agent.process_async(message)
-            else:
-                response = target_agent.process(message)
+        # Route message to target agent
+        self.logger.info(
+            f"Routing message: type={message_type}, target={target_agent_id}, "
+            f"orchestrator={self.agent_id}"
+        )
+        
+        # Check if target agent has async process method
+        if hasattr(target_agent, 'process_async'):
+            response = await target_agent.process_async(message)
+        else:
+            # Use asyncio.to_thread to prevent blocking the event loop
+            response = await asyncio.to_thread(target_agent.process, message)
         
         return response
         
@@ -223,15 +226,7 @@ class OrchestratorAgent(BaseAgent):
         Returns:
             Workflow execution results
         """
-        try:
-            return asyncio.run(self._execute_workflow_async(data))
-        except RuntimeError as e:
-            if "cannot be called from a running event loop" in str(e):
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(asyncio.run, self._execute_workflow_async(data))
-                    return future.result()
-            raise
+        return _run_async_with_fallback(self._execute_workflow_async(data))
     
     async def _execute_workflow_async(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
