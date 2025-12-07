@@ -2,6 +2,10 @@
 from typing import Dict, Any, Optional
 from mira.core.base_agent import BaseAgent
 
+# Constants for compliance level mapping defaults
+DEFAULT_COMPLIANCE_VALUE = 0  # Default value when compliance level is unknown
+DEFAULT_THRESHOLD_VALUE = 2   # Default threshold value (equivalent to 'medium')
+
 
 class GovernanceAgent(BaseAgent):
     """
@@ -29,7 +33,10 @@ class GovernanceAgent(BaseAgent):
         self.compliance_threshold = self.config.get('compliance_threshold', 'medium')
         self.explainability_threshold = self.config.get('explainability_threshold', 0.7)
         
-        # Map compliance levels to numeric values for comparison
+        # Map compliance levels to numeric values for threshold comparison
+        # This mapping allows string compliance levels (low, medium, high, critical)
+        # to be compared numerically. Higher values indicate stricter compliance requirements.
+        # Used to determine if a workflow's compliance level meets or exceeds the configured threshold.
         self.compliance_levels = {
             'low': 1,
             'medium': 2,
@@ -93,8 +100,14 @@ class GovernanceAgent(BaseAgent):
             )
             
         # Check compliance requirements
-        compliance_value = self.compliance_levels.get(assessment['compliance_level'], 0)
-        threshold_value = self.compliance_levels.get(self.compliance_threshold, 2)
+        compliance_value = self.compliance_levels.get(
+            assessment['compliance_level'], 
+            DEFAULT_COMPLIANCE_VALUE
+        )
+        threshold_value = self.compliance_levels.get(
+            self.compliance_threshold, 
+            DEFAULT_THRESHOLD_VALUE
+        )
         
         if compliance_value >= threshold_value:
             if assessment['risk_level'] != 'high':
