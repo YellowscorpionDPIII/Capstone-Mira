@@ -12,7 +12,8 @@ from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 import redis
-from jose import JWTError, jwt
+import jwt
+from jwt.exceptions import PyJWTError
 from governance.risk_assessor import RiskScore
 
 # Configure logging
@@ -53,7 +54,7 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
             raise HTTPException(status_code=403, detail="Insufficient permissions")
         
         return reviewer_id
-    except JWTError:
+    except PyJWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
 @app.post("/approve/{workflow_id}", response_model=ApprovalResponse)

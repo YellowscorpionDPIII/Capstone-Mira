@@ -121,7 +121,6 @@ class RiskAssessor:
             import os
             default_paths = [
                 'config/governance.yaml',
-                '/home/runner/work/Capstone-Mira/Capstone-Mira/config/governance.yaml',
                 os.path.join(os.path.dirname(__file__), '..', 'config', 'governance.yaml')
             ]
             

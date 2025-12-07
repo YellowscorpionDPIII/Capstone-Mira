@@ -4,11 +4,6 @@ import json
 from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime
 
-# Import the risk assessor
-import sys
-import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
-
 from governance.risk_assessor import RiskAssessor, RiskScore
 
 
