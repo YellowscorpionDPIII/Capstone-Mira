@@ -2,6 +2,7 @@
 from typing import Dict, Any, Optional
 from mira.core.base_agent import BaseAgent
 from mira.core.message_broker import get_broker
+from mira.agents.governance_agent import GovernanceAgent
 
 
 class OrchestratorAgent(BaseAgent):
@@ -19,6 +20,10 @@ class OrchestratorAgent(BaseAgent):
         self.agent_registry: Dict[str, BaseAgent] = {}
         self.routing_rules = self._initialize_routing_rules()
         
+        # Initialize governance agent for risk assessment and human-in-the-loop validation
+        self.governance_agent = GovernanceAgent(config=config.get('governance', {}) if config else {})
+        self.register_agent(self.governance_agent)
+        
     def _initialize_routing_rules(self) -> Dict[str, str]:
         """
         Initialize message routing rules.
@@ -32,7 +37,9 @@ class OrchestratorAgent(BaseAgent):
             'assess_risks': 'risk_assessment_agent',
             'update_risk': 'risk_assessment_agent',
             'generate_report': 'status_reporter_agent',
-            'schedule_report': 'status_reporter_agent'
+            'schedule_report': 'status_reporter_agent',
+            'assess_governance': 'governance_agent',
+            'check_human_validation': 'governance_agent'
         }
         
     def register_agent(self, agent: BaseAgent):
@@ -101,21 +108,46 @@ class OrchestratorAgent(BaseAgent):
         
     def _execute_workflow(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Execute a multi-step workflow.
+        Execute a multi-step workflow with governance checks.
         
         Args:
             data: Workflow definition
             
         Returns:
-            Workflow execution results
+            Workflow execution results with governance assessment
         """
         workflow_type = data.get('workflow_type')
         workflow_data = data.get('data', {})
         
         results = {
             'workflow_type': workflow_type,
-            'steps': []
+            'steps': [],
+            'governance': None  # Will be populated if governance data is provided
         }
+        
+        # Perform governance assessment if governance data is provided
+        governance_data = data.get('governance_data')
+        if governance_data:
+            governance_response = self._route_message({
+                'type': 'assess_governance',
+                'data': governance_data
+            })
+            
+            if governance_response['status'] == 'success':
+                governance_assessment = governance_response['data']
+                results['governance'] = governance_assessment
+                results['risk_level'] = governance_assessment['risk_level']
+                results['requires_human_validation'] = governance_assessment['requires_human_validation']
+                
+                self.logger.info(
+                    f"Governance assessment completed: risk_level={governance_assessment['risk_level']}, "
+                    f"requires_validation={governance_assessment['requires_human_validation']}"
+                )
+                
+                # If high risk or requires validation, mark workflow status accordingly
+                if governance_assessment['requires_human_validation']:
+                    results['status'] = 'pending_approval'
+                    self.logger.warning("Workflow requires human validation before proceeding")
         
         if workflow_type == 'project_initialization':
             # Step 1: Generate project plan
