@@ -10,6 +10,7 @@ A modular multi-agent AI workflow system for technical program management. Autom
 - **RiskAssessmentAgent**: Identifies and assesses project risks with mitigation strategies
 - **StatusReporterAgent**: Creates weekly status reports with accomplishments and metrics
 - **OrchestratorAgent**: Routes messages between agents and coordinates multi-agent workflows
+- **GovernanceAgent**: Performs governance checks and determines when human validation is required based on financial impact, compliance, explainability, and risk thresholds
 
 ### Integrations
 
@@ -228,6 +229,144 @@ workflow_message = {
 }
 
 result = orchestrator.process(workflow_message)
+```
+
+### Governance & Human-in-the-Loop
+
+The `GovernanceAgent` provides automated risk assessment and human-in-the-loop validation for workflows. It evaluates financial impact, compliance requirements, explainability, and risk levels to determine when human review is required.
+
+#### Basic Usage
+
+```python
+from mira.agents.orchestrator_agent import OrchestratorAgent, GovernanceAgent
+from mira.agents.project_plan_agent import ProjectPlanAgent
+from mira.agents.risk_assessment_agent import RiskAssessmentAgent
+from mira.agents.status_reporter_agent import StatusReporterAgent
+
+# Initialize orchestrator with custom governance thresholds
+config = {
+    'governance': {
+        'financial_impact_threshold': 100000,
+        'compliance_risk_threshold': 70,
+        'explainability_threshold': 0.5,
+        'high_risk_score_threshold': 75
+    }
+}
+
+orchestrator = OrchestratorAgent(config=config)
+orchestrator.register_agent(ProjectPlanAgent())
+orchestrator.register_agent(RiskAssessmentAgent())
+orchestrator.register_agent(StatusReporterAgent())
+
+# Execute workflow with governance checks
+workflow_message = {
+    'type': 'workflow',
+    'data': {
+        'workflow_type': 'project_initialization',
+        'data': {
+            'name': 'High-Value Project',
+            'goals': ['Goal 1', 'Goal 2'],
+            'duration_weeks': 12,
+            'financial_impact': 250000,
+            'compliance_requirements': ['GDPR', 'SOX']
+        }
+    }
+}
+
+result = orchestrator.process(workflow_message)
+
+# Check governance results
+governance = result['governance']
+if governance['requires_human_review']:
+    print(f"Human review required: {result['human_review_reason']}")
+    print(f"Status: {result['status']}")  # 'pending_human_review'
+else:
+    print(f"Approved automatically: {result['status']}")  # 'approved'
+```
+
+#### Governance Checks
+
+The `GovernanceAgent` performs four types of checks:
+
+1. **Financial Impact Check**: Flags workflows exceeding financial threshold
+2. **Compliance Check**: Identifies high-severity compliance risks and requirements
+3. **Explainability Check**: Evaluates documentation completeness and clarity
+4. **Risk Level Check**: Assesses overall risk score against high-risk threshold
+
+#### Configuration Options
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `financial_impact_threshold` | 100000 | Maximum financial impact before requiring review |
+| `compliance_risk_threshold` | 70 | Compliance risk score threshold (0-100) |
+| `explainability_threshold` | 0.5 | Minimum explainability score (0-1) |
+| `high_risk_score_threshold` | 75 | Risk score above which review is required (0-100) |
+
+#### Standalone GovernanceAgent Usage
+
+```python
+from mira.agents.orchestrator_agent import GovernanceAgent
+
+# Initialize with custom config
+gov_agent = GovernanceAgent(config={
+    'governance': {
+        'financial_impact_threshold': 75000,
+        'high_risk_score_threshold': 70
+    }
+})
+
+# Perform governance check
+workflow_data = {
+    'financial_impact': 100000,
+    'compliance_requirements': ['GDPR', 'HIPAA']
+}
+
+plan_data = {
+    'name': 'Project Name',
+    'description': 'Project description',
+    'milestones': [...],
+    'tasks': [...]
+}
+
+risk_data = {
+    'risk_score': 80.0,
+    'risks': [...]
+}
+
+governance_result = gov_agent.perform_governance_check(
+    workflow_data, plan_data, risk_data
+)
+
+# Review results
+print(f"Requires Review: {governance_result['requires_human_review']}")
+print(f"Reason: {governance_result['review_reason']}")
+print(f"Financial Check: {governance_result['financial_check']}")
+print(f"Compliance Check: {governance_result['compliance_check']}")
+print(f"Explainability Check: {governance_result['explainability_check']}")
+print(f"Risk Level Check: {governance_result['risk_level_check']}")
+```
+
+#### Backward Compatibility
+
+The governance module is fully backward compatible. Workflows without governance-specific data (e.g., `financial_impact`, `compliance_requirements`) will still execute normally with default values, ensuring existing implementations continue to work.
+
+```python
+# Legacy workflow (still works)
+legacy_workflow = {
+    'type': 'workflow',
+    'data': {
+        'workflow_type': 'project_initialization',
+        'data': {
+            'name': 'Legacy Project',
+            'goals': ['Goal 1'],
+            'duration_weeks': 10
+            # No governance fields required
+        }
+    }
+}
+
+result = orchestrator.process(legacy_workflow)
+# Will complete successfully with governance checks using default values
 ```
 
 ### Use Integrations

@@ -7,11 +7,12 @@ Modular multi-agent AI workflow system for technical program management. Automat
 
 ## 🚀 Features
 
-- **🤖 Four Specialized Agents**
+- **🤖 Five Specialized Agents**
   - ProjectPlanAgent: Generate comprehensive project plans
   - RiskAssessmentAgent: Identify and assess project risks
   - StatusReporterAgent: Create weekly status reports
   - OrchestratorAgent: Coordinate multi-agent workflows
+  - GovernanceAgent: Automated governance and human-in-the-loop validation
 
 - **🔌 Six Integration Adapters**
   - Trello, Jira, GitHub, Airtable, Google Docs, PDF
