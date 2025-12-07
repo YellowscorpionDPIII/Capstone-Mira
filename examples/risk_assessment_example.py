@@ -3,13 +3,10 @@ Example usage of the Risk Assessment Engine.
 
 This script demonstrates how to use the RiskAssessor class to evaluate
 workflows for risk and trigger Human-in-the-Loop (HITL) reviews.
+
+Note: Run this from the repository root or install the package with:
+    pip install -e .
 """
-
-import sys
-import os
-
-# Add parent directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from governance.risk_assessor import RiskAssessor, RiskScore
 import json
