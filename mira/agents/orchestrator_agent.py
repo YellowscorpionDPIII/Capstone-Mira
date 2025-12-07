@@ -32,7 +32,9 @@ class OrchestratorAgent(BaseAgent):
             'assess_risks': 'risk_assessment_agent',
             'update_risk': 'risk_assessment_agent',
             'generate_report': 'status_reporter_agent',
-            'schedule_report': 'status_reporter_agent'
+            'schedule_report': 'status_reporter_agent',
+            'generate_roadmap': 'roadmapping_agent',
+            'track_kpi_progress': 'roadmapping_agent'
         }
         
     def register_agent(self, agent: BaseAgent):

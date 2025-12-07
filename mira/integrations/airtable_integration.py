@@ -97,3 +97,30 @@ class AirtableIntegration(BaseIntegration):
             'synced_count': synced_count,
             'base_id': self.base_id
         }
+    
+    def get_kpis(self, initiative_id: str) -> Dict[str, Any]:
+        """
+        Get KPI data for a specific initiative from Airtable.
+        
+        Args:
+            initiative_id: Unique identifier for the initiative
+            
+        Returns:
+            Dictionary containing KPI metrics
+        """
+        if not self.connected:
+            self.logger.error("Not connected to Airtable")
+            return {'success': False, 'error': 'Not connected to Airtable'}
+        
+        # In production, would query Airtable API for specific initiative KPIs
+        # For now, return simulated KPI data
+        self.logger.info(f"Retrieved KPIs for initiative: {initiative_id}")
+        
+        return {
+            'success': True,
+            'initiative_id': initiative_id,
+            'ebit_pct': 0.18,
+            'revenue_change': 0.22,
+            'cost_reduction': 0.15,
+            'last_updated': '2025-12-07'
+        }
