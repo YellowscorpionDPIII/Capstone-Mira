@@ -6,7 +6,7 @@ Handles async approval/rejection with RBAC, audit logging, and Redis state.
 
 import logging
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -76,7 +76,7 @@ async def approve_workflow(
         workflow_status = {
             "status": "approved",
             "approved_by": reviewer_id,
-            "approved_at": datetime.utcnow().isoformat(),
+            "approved_at": datetime.now(timezone.utc).isoformat(),
             "notes": req.reviewer_notes,
             "risk_score": json.loads(redis_client.hget(f"risk:{workflow_id}", "score") or "{}")
         }
@@ -90,7 +90,7 @@ async def approve_workflow(
             "event": "hitl_approved",
             "workflow_id": workflow_id,
             "reviewer": reviewer_id,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "notes": req.reviewer_notes
         }
         redis_client.lpush("audit_log", json.dumps(audit_entry))
@@ -99,7 +99,7 @@ async def approve_workflow(
         return ApprovalResponse(
             status="approved",
             workflow_id=workflow_id,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             reviewer_id=reviewer_id
         )
         
@@ -126,7 +126,7 @@ async def reject_workflow(
             "event": "hitl_rejected",
             "workflow_id": workflow_id,
             "reviewer": reviewer_id,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "notes": req.reviewer_notes
         }
         redis_client.lpush("audit_log", json.dumps(audit_entry))
@@ -135,7 +135,7 @@ async def reject_workflow(
         return ApprovalResponse(
             status="rejected",
             workflow_id=workflow_id,
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             reviewer_id=reviewer_id
         )
         

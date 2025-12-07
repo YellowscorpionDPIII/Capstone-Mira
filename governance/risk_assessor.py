@@ -10,7 +10,7 @@ import json
 import yaml
 from dataclasses import dataclass, asdict
 from typing import Dict, Any, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -218,7 +218,7 @@ class RiskAssessor:
             explainability_risk=explainability_risk,
             composite_score=composite_score,
             requires_hitl=requires_hitl,
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             details={
                 'financial_amount': workflow_data.get('financial_amount', 0),
                 'compliance_checks': workflow_data.get('compliance_data', {}),
@@ -387,7 +387,7 @@ class RiskAssessor:
             task_data = {
                 'workflow_id': risk_score.workflow_id,
                 'risk_score': risk_score.to_dict(),
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': datetime.now(timezone.utc).isoformat()
             }
             
             # Send task to Celery
