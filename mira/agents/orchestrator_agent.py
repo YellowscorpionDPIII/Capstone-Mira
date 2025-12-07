@@ -4,6 +4,270 @@ from mira.core.base_agent import BaseAgent
 from mira.core.message_broker import get_broker
 
 
+class GovernanceAgent:
+    """
+    Agent responsible for governance and human-in-the-loop validation.
+    
+    This agent performs risk assessments based on financial impact, compliance,
+    and explainability thresholds to determine if human validation is required.
+    """
+    
+    def __init__(self, config: Dict[str, Any] = None):
+        """
+        Initialize the GovernanceAgent.
+        
+        Args:
+            config: Optional configuration dictionary with governance thresholds
+        """
+        self.config = config or {}
+        self.thresholds = self._initialize_thresholds()
+        
+    def _initialize_thresholds(self) -> Dict[str, Any]:
+        """
+        Initialize governance thresholds from config or defaults.
+        
+        Returns:
+            Dictionary of governance thresholds
+        """
+        governance_config = self.config.get('governance', {})
+        return {
+            'financial_impact_threshold': governance_config.get('financial_impact_threshold', 100000),
+            'compliance_risk_threshold': governance_config.get('compliance_risk_threshold', 70),
+            'explainability_threshold': governance_config.get('explainability_threshold', 0.5),
+            'high_risk_score_threshold': governance_config.get('high_risk_score_threshold', 75)
+        }
+        
+    def perform_governance_check(
+        self,
+        workflow_data: Dict[str, Any],
+        plan_data: Dict[str, Any],
+        risk_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Perform governance check on workflow execution.
+        
+        Args:
+            workflow_data: Original workflow data
+            plan_data: Generated plan data
+            risk_data: Risk assessment data
+            
+        Returns:
+            Governance check results with human review determination
+        """
+        # Extract relevant data for governance checks
+        financial_impact = workflow_data.get('financial_impact', 0)
+        compliance_requirements = workflow_data.get('compliance_requirements', [])
+        risk_score = risk_data.get('risk_score', 0)
+        risks = risk_data.get('risks', [])
+        
+        # Perform individual checks
+        financial_check = self._check_financial_impact(financial_impact)
+        compliance_check = self._check_compliance(compliance_requirements, risks)
+        explainability_check = self._check_explainability(plan_data, risk_data)
+        risk_level_check = self._check_risk_level(risk_score)
+        
+        # Determine if human validation is required
+        requires_review = self._determine_human_validation_required(
+            financial_check,
+            compliance_check,
+            explainability_check,
+            risk_level_check
+        )
+        
+        # Build review reasons
+        review_reasons = []
+        if financial_check['requires_review']:
+            review_reasons.append(financial_check['reason'])
+        if compliance_check['requires_review']:
+            review_reasons.append(compliance_check['reason'])
+        if explainability_check['requires_review']:
+            review_reasons.append(explainability_check['reason'])
+        if risk_level_check['requires_review']:
+            review_reasons.append(risk_level_check['reason'])
+            
+        return {
+            'requires_human_review': requires_review,
+            'review_reason': '; '.join(review_reasons) if review_reasons else None,
+            'financial_check': financial_check,
+            'compliance_check': compliance_check,
+            'explainability_check': explainability_check,
+            'risk_level_check': risk_level_check,
+            'thresholds_used': self.thresholds
+        }
+        
+    def _check_financial_impact(self, financial_impact: float) -> Dict[str, Any]:
+        """
+        Check if financial impact exceeds threshold.
+        
+        Args:
+            financial_impact: Financial impact amount
+            
+        Returns:
+            Check result with requires_review flag
+        """
+        threshold = self.thresholds['financial_impact_threshold']
+        exceeds_threshold = financial_impact > threshold
+        
+        return {
+            'requires_review': exceeds_threshold,
+            'financial_impact': financial_impact,
+            'threshold': threshold,
+            'reason': f'Financial impact (${financial_impact:,.2f}) exceeds threshold (${threshold:,.2f})' 
+                     if exceeds_threshold else None
+        }
+        
+    def _check_compliance(
+        self,
+        compliance_requirements: List[str],
+        risks: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """
+        Check compliance requirements and related risks.
+        
+        Args:
+            compliance_requirements: List of compliance requirements
+            risks: List of identified risks
+            
+        Returns:
+            Check result with requires_review flag
+        """
+        # Check if any high-severity compliance-related risks exist
+        compliance_risks = [
+            r for r in risks 
+            if r.get('category') == 'compliance' or 
+               any(req.lower() in r.get('description', '').lower() 
+                   for req in compliance_requirements)
+        ]
+        
+        high_severity_compliance_risks = [
+            r for r in compliance_risks if r.get('severity') == 'high'
+        ]
+        
+        requires_review = len(high_severity_compliance_risks) > 0 or len(compliance_requirements) > 0
+        
+        reason = None
+        if high_severity_compliance_risks:
+            reason = f'High-severity compliance risks detected: {len(high_severity_compliance_risks)}'
+        elif compliance_requirements:
+            reason = f'Compliance requirements present: {", ".join(compliance_requirements[:3])}'
+            
+        return {
+            'requires_review': requires_review,
+            'compliance_requirements': compliance_requirements,
+            'compliance_risks_count': len(compliance_risks),
+            'high_severity_compliance_risks': len(high_severity_compliance_risks),
+            'reason': reason
+        }
+        
+    def _check_explainability(
+        self,
+        plan_data: Dict[str, Any],
+        risk_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Check explainability of the plan and risk assessment.
+        
+        Args:
+            plan_data: Generated plan data
+            risk_data: Risk assessment data
+            
+        Returns:
+            Check result with requires_review flag
+        """
+        # Calculate explainability score based on documentation completeness
+        explainability_score = 0.0
+        factors = []
+        
+        # Check if plan has description
+        if plan_data.get('description'):
+            explainability_score += 0.2
+            factors.append('plan_description')
+            
+        # Check if plan has milestones
+        if plan_data.get('milestones'):
+            explainability_score += 0.2
+            factors.append('milestones')
+            
+        # Check if tasks are documented
+        if plan_data.get('tasks'):
+            explainability_score += 0.2
+            factors.append('tasks')
+            
+        # Check if risks have mitigation strategies and descriptions in single pass
+        risks = risk_data.get('risks', [])
+        if risks:
+            has_mitigation = all(r.get('mitigation') for r in risks)
+            has_descriptions = all(r.get('description') for r in risks)
+            
+            if has_mitigation:
+                explainability_score += 0.2
+                factors.append('risk_mitigation')
+                
+            if has_descriptions:
+                explainability_score += 0.2
+                factors.append('risk_descriptions')
+            
+        threshold = self.thresholds['explainability_threshold']
+        below_threshold = explainability_score < threshold
+        
+        return {
+            'requires_review': below_threshold,
+            'explainability_score': round(explainability_score, 2),
+            'threshold': threshold,
+            'factors_present': factors,
+            'reason': f'Explainability score ({explainability_score:.2f}) below threshold ({threshold:.2f})'
+                     if below_threshold else None
+        }
+        
+    def _check_risk_level(self, risk_score: float) -> Dict[str, Any]:
+        """
+        Check if risk level is high.
+        
+        Args:
+            risk_score: Overall risk score
+            
+        Returns:
+            Check result with requires_review flag
+        """
+        threshold = self.thresholds['high_risk_score_threshold']
+        is_high_risk = risk_score >= threshold
+        
+        return {
+            'requires_review': is_high_risk,
+            'risk_score': risk_score,
+            'threshold': threshold,
+            'risk_level': 'high' if is_high_risk else 'medium' if risk_score >= 50 else 'low',
+            'reason': f'Risk score ({risk_score:.2f}) exceeds high-risk threshold ({threshold:.2f})'
+                     if is_high_risk else None
+        }
+        
+    def _determine_human_validation_required(
+        self,
+        financial_check: Dict[str, Any],
+        compliance_check: Dict[str, Any],
+        explainability_check: Dict[str, Any],
+        risk_level_check: Dict[str, Any]
+    ) -> bool:
+        """
+        Determine if human validation is required based on all checks.
+        
+        Args:
+            financial_check: Financial impact check result
+            compliance_check: Compliance check result
+            explainability_check: Explainability check result
+            risk_level_check: Risk level check result
+            
+        Returns:
+            True if human validation is required, False otherwise
+        """
+        return (
+            financial_check['requires_review'] or
+            compliance_check['requires_review'] or
+            explainability_check['requires_review'] or
+            risk_level_check['requires_review']
+        )
+
+
 class OrchestratorAgent(BaseAgent):
     """
     Agent responsible for orchestrating workflow between other agents.
@@ -196,262 +460,3 @@ class OrchestratorAgent(BaseAgent):
         self.logger.info(f"Added routing rule: {message_type} -> {agent_id}")
 
 
-class GovernanceAgent:
-    """
-    Agent responsible for governance and human-in-the-loop validation.
-    
-    This agent performs risk assessments based on financial impact, compliance,
-    and explainability thresholds to determine if human validation is required.
-    """
-    
-    def __init__(self, config: Dict[str, Any] = None):
-        """
-        Initialize the GovernanceAgent.
-        
-        Args:
-            config: Optional configuration dictionary with governance thresholds
-        """
-        self.config = config or {}
-        self.thresholds = self._initialize_thresholds()
-        
-    def _initialize_thresholds(self) -> Dict[str, Any]:
-        """
-        Initialize governance thresholds from config or defaults.
-        
-        Returns:
-            Dictionary of governance thresholds
-        """
-        governance_config = self.config.get('governance', {})
-        return {
-            'financial_impact_threshold': governance_config.get('financial_impact_threshold', 100000),
-            'compliance_risk_threshold': governance_config.get('compliance_risk_threshold', 70),
-            'explainability_threshold': governance_config.get('explainability_threshold', 0.5),
-            'high_risk_score_threshold': governance_config.get('high_risk_score_threshold', 75)
-        }
-        
-    def perform_governance_check(
-        self,
-        workflow_data: Dict[str, Any],
-        plan_data: Dict[str, Any],
-        risk_data: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """
-        Perform governance check on workflow execution.
-        
-        Args:
-            workflow_data: Original workflow data
-            plan_data: Generated plan data
-            risk_data: Risk assessment data
-            
-        Returns:
-            Governance check results with human review determination
-        """
-        # Extract relevant data for governance checks
-        financial_impact = workflow_data.get('financial_impact', 0)
-        compliance_requirements = workflow_data.get('compliance_requirements', [])
-        risk_score = risk_data.get('risk_score', 0)
-        risks = risk_data.get('risks', [])
-        
-        # Perform individual checks
-        financial_check = self._check_financial_impact(financial_impact)
-        compliance_check = self._check_compliance(compliance_requirements, risks)
-        explainability_check = self._check_explainability(plan_data, risk_data)
-        risk_level_check = self._check_risk_level(risk_score)
-        
-        # Determine if human validation is required
-        requires_review = self._determine_human_validation_required(
-            financial_check,
-            compliance_check,
-            explainability_check,
-            risk_level_check
-        )
-        
-        # Build review reasons
-        review_reasons = []
-        if financial_check['requires_review']:
-            review_reasons.append(financial_check['reason'])
-        if compliance_check['requires_review']:
-            review_reasons.append(compliance_check['reason'])
-        if explainability_check['requires_review']:
-            review_reasons.append(explainability_check['reason'])
-        if risk_level_check['requires_review']:
-            review_reasons.append(risk_level_check['reason'])
-            
-        return {
-            'requires_human_review': requires_review,
-            'review_reason': '; '.join(review_reasons) if review_reasons else None,
-            'financial_check': financial_check,
-            'compliance_check': compliance_check,
-            'explainability_check': explainability_check,
-            'risk_level_check': risk_level_check,
-            'thresholds_used': self.thresholds
-        }
-        
-    def _check_financial_impact(self, financial_impact: float) -> Dict[str, Any]:
-        """
-        Check if financial impact exceeds threshold.
-        
-        Args:
-            financial_impact: Financial impact amount
-            
-        Returns:
-            Check result with requires_review flag
-        """
-        threshold = self.thresholds['financial_impact_threshold']
-        exceeds_threshold = financial_impact > threshold
-        
-        return {
-            'requires_review': exceeds_threshold,
-            'financial_impact': financial_impact,
-            'threshold': threshold,
-            'reason': f'Financial impact (${financial_impact:,.2f}) exceeds threshold (${threshold:,.2f})' 
-                     if exceeds_threshold else None
-        }
-        
-    def _check_compliance(
-        self,
-        compliance_requirements: List[str],
-        risks: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
-        """
-        Check compliance requirements and related risks.
-        
-        Args:
-            compliance_requirements: List of compliance requirements
-            risks: List of identified risks
-            
-        Returns:
-            Check result with requires_review flag
-        """
-        # Check if any high-severity compliance-related risks exist
-        compliance_risks = [
-            r for r in risks 
-            if r.get('category') == 'compliance' or 
-               any(req.lower() in r.get('description', '').lower() 
-                   for req in compliance_requirements)
-        ]
-        
-        high_severity_compliance_risks = [
-            r for r in compliance_risks if r.get('severity') == 'high'
-        ]
-        
-        requires_review = len(high_severity_compliance_risks) > 0 or len(compliance_requirements) > 0
-        
-        reason = None
-        if high_severity_compliance_risks:
-            reason = f'High-severity compliance risks detected: {len(high_severity_compliance_risks)}'
-        elif compliance_requirements:
-            reason = f'Compliance requirements present: {", ".join(compliance_requirements[:3])}'
-            
-        return {
-            'requires_review': requires_review,
-            'compliance_requirements': compliance_requirements,
-            'compliance_risks_count': len(compliance_risks),
-            'high_severity_compliance_risks': len(high_severity_compliance_risks),
-            'reason': reason
-        }
-        
-    def _check_explainability(
-        self,
-        plan_data: Dict[str, Any],
-        risk_data: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """
-        Check explainability of the plan and risk assessment.
-        
-        Args:
-            plan_data: Generated plan data
-            risk_data: Risk assessment data
-            
-        Returns:
-            Check result with requires_review flag
-        """
-        # Calculate explainability score based on documentation completeness
-        explainability_score = 0.0
-        factors = []
-        
-        # Check if plan has description
-        if plan_data.get('description'):
-            explainability_score += 0.2
-            factors.append('plan_description')
-            
-        # Check if plan has milestones
-        if plan_data.get('milestones'):
-            explainability_score += 0.2
-            factors.append('milestones')
-            
-        # Check if tasks are documented
-        if plan_data.get('tasks'):
-            explainability_score += 0.2
-            factors.append('tasks')
-            
-        # Check if risks have mitigation strategies
-        risks = risk_data.get('risks', [])
-        if risks and all(r.get('mitigation') for r in risks):
-            explainability_score += 0.2
-            factors.append('risk_mitigation')
-            
-        # Check if risks have descriptions
-        if risks and all(r.get('description') for r in risks):
-            explainability_score += 0.2
-            factors.append('risk_descriptions')
-            
-        threshold = self.thresholds['explainability_threshold']
-        below_threshold = explainability_score < threshold
-        
-        return {
-            'requires_review': below_threshold,
-            'explainability_score': round(explainability_score, 2),
-            'threshold': threshold,
-            'factors_present': factors,
-            'reason': f'Explainability score ({explainability_score:.2f}) below threshold ({threshold:.2f})'
-                     if below_threshold else None
-        }
-        
-    def _check_risk_level(self, risk_score: float) -> Dict[str, Any]:
-        """
-        Check if risk level is high.
-        
-        Args:
-            risk_score: Overall risk score
-            
-        Returns:
-            Check result with requires_review flag
-        """
-        threshold = self.thresholds['high_risk_score_threshold']
-        is_high_risk = risk_score >= threshold
-        
-        return {
-            'requires_review': is_high_risk,
-            'risk_score': risk_score,
-            'threshold': threshold,
-            'risk_level': 'high' if is_high_risk else 'medium' if risk_score >= 50 else 'low',
-            'reason': f'Risk score ({risk_score:.2f}) exceeds high-risk threshold ({threshold:.2f})'
-                     if is_high_risk else None
-        }
-        
-    def _determine_human_validation_required(
-        self,
-        financial_check: Dict[str, Any],
-        compliance_check: Dict[str, Any],
-        explainability_check: Dict[str, Any],
-        risk_level_check: Dict[str, Any]
-    ) -> bool:
-        """
-        Determine if human validation is required based on all checks.
-        
-        Args:
-            financial_check: Financial impact check result
-            compliance_check: Compliance check result
-            explainability_check: Explainability check result
-            risk_level_check: Risk level check result
-            
-        Returns:
-            True if human validation is required, False otherwise
-        """
-        return (
-            financial_check['requires_review'] or
-            compliance_check['requires_review'] or
-            explainability_check['requires_review'] or
-            risk_level_check['requires_review']
-        )
