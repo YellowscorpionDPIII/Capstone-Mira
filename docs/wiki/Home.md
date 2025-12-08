@@ -4,9 +4,9 @@ Welcome to the Mira Wiki! This is the central documentation hub for the Mira Mul
 
 ## 🚀 Getting Started
 
-- [Installation Guide](../../README.md#-installation)
-- [Quick Start Tutorial](../../README.md#-quick-start)
-- [Running Examples](../../README.md#-quick-start)
+- [Installation Guide](../../README.md#installation)
+- [Quick Start Tutorial](../../README.md#quick-start)
+- [Running Examples](../../README.md#quick-start)
 - [Configuration Setup](../../DOCUMENTATION.md#configuration)
 
 ## 📚 Core Documentation
@@ -74,8 +74,8 @@ Complete guide for setting up and contributing translations:
 
 ## 🧪 Testing
 
-- [Running Tests](../../README.md#-testing)
-- [Test Suite Structure](../../SUMMARY.md#-testing-suite-3-files)
+- [Running Tests](../../README.md#testing)
+- [Test Suite Structure](../../SUMMARY.md#testing-suite-3-files)
 - [Testing Strategy](../../ARCHITECTURE.md#testing-strategy)
 
 ## ⚙️ Configuration
@@ -87,7 +87,7 @@ Complete guide for setting up and contributing translations:
 
 ## 📁 Project Structure
 
-- [Directory Layout](../../README.md#-project-structure)
+- [Directory Layout](../../README.md#project-structure)
 - [Module Organization](../../SUMMARY.md#directory-structure)
 - [File Overview](../../SUMMARY.md#what-was-implemented)
 
@@ -120,5 +120,4 @@ We welcome contributions! Here's how you can help:
 ## 📖 Additional Resources
 
 - [License Information](../../LICENSE)
-- [Project Governance](../../governance)
 - [Example Scripts](../../examples/example_usage.py)
