@@ -20,6 +20,7 @@ This guide covers the localization (i18n) setup for Mira, including how the syst
   - [Step 4: Test Your Translations](#step-4-test-your-translations)
   - [Step 5: Submit Pull Request](#step-5-submit-pull-request)
 - [Supported Languages](#supported-languages)
+  - [Maintaining Translation Completeness](#maintaining-translation-completeness)
 - [FAQ](#faq)
 
 ---
@@ -249,14 +250,14 @@ This PR adds [Language Name] translations for Mira.
 
 ## Supported Languages
 
-| Language | Code | Status | Maintainer |
-|----------|------|--------|------------|
-| English | `en` | ✅ Complete | Core Team |
-| Spanish | `es` | 🚧 In Progress | - |
-| French | `fr` | 📋 Planned | - |
-| German | `de` | 📋 Planned | - |
-| Japanese | `ja` | 📋 Planned | - |
-| Chinese (Simplified) | `zh` | 📋 Planned | - |
+| Language | Code | Status | % Complete | Maintainer |
+|----------|------|--------|------------|------------|
+| English | `en` | ✅ Complete | 100% | Core Team |
+| Spanish | `es` | 🚧 In Progress | 45% | - |
+| French | `fr` | 📋 Planned | 0% | - |
+| German | `de` | 📋 Planned | 0% | - |
+| Japanese | `ja` | 📋 Planned | 0% | - |
+| Chinese (Simplified) | `zh` | 📋 Planned | 0% | - |
 
 **Legend:**
 - ✅ Complete - All strings translated
@@ -264,6 +265,67 @@ This PR adds [Language Name] translations for Mira.
 - 📋 Planned - Looking for contributors
 
 Want to help? Pick a language and [open an issue](https://github.com/YellowscorpionDPIII/Capstone-Mira/issues/new) to let us know you're working on it!
+
+### Maintaining Translation Completeness
+
+The "% Complete" column in the table above indicates the translation coverage for each language. This can be maintained manually or automated using translation status tracking.
+
+#### Manual Updates
+
+To manually update the completion percentage:
+1. Count the total number of translation keys in the English locale files
+2. Count the number of translated (non-empty, non-placeholder) keys in the target language
+3. Calculate percentage: `(translated_keys / total_keys) * 100`
+4. Update the table above with the new percentage
+
+#### Automation with JSON Summary File
+
+For automated tracking, you can maintain a `translation-status.json` file in the `docs/` directory with the following structure:
+
+```json
+{
+  "last_updated": "2024-12-08",
+  "languages": {
+    "en": {
+      "total_keys": 150,
+      "translated_keys": 150,
+      "percentage": 100,
+      "last_updated": "2024-12-08"
+    },
+    "es": {
+      "total_keys": 150,
+      "translated_keys": 68,
+      "percentage": 45,
+      "last_updated": "2024-11-15"
+    },
+    "fr": {
+      "total_keys": 150,
+      "translated_keys": 0,
+      "percentage": 0,
+      "last_updated": "2024-10-01"
+    }
+  }
+}
+```
+
+**Future Automation Script:**
+
+A Python script can be created to automatically generate this file by:
+1. Scanning all locale directories in `mira/locales/`
+2. Counting keys in each JSON file
+3. Comparing against the English baseline
+4. Generating the `translation-status.json` file
+
+Example command:
+```bash
+python scripts/update_translation_status.py
+```
+
+This automation would enable:
+- Automatic updates on each commit via CI/CD
+- Real-time translation progress tracking
+- Identification of missing or outdated translations
+- Generation of translation coverage reports
 
 ---
 
