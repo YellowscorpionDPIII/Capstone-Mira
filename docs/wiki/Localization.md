@@ -280,7 +280,7 @@ To manually update the completion percentage:
 
 #### Automation with JSON Summary File
 
-For automated tracking, you can maintain a `translation-status.json` file in the `docs/` directory with the following structure:
+For automated tracking, you can maintain a `translation-status.json` file in the project root or `docs/` directory with the following structure:
 
 ```json
 {
@@ -310,14 +310,16 @@ For automated tracking, you can maintain a `translation-status.json` file in the
 
 **Future Automation Script:**
 
-A Python script can be created to automatically generate this file by:
-1. Scanning all locale directories in `mira/locales/`
+A Python script can be created (e.g., in `mira/scripts/update_translation_status.py` or a dedicated `scripts/` directory) to automatically generate this file by:
+1. Scanning all locale directories in `mira/locales/` (once the localization system is implemented)
 2. Counting keys in each JSON file
 3. Comparing against the English baseline
 4. Generating the `translation-status.json` file
 
 Example command:
 ```bash
+python mira/scripts/update_translation_status.py
+# or
 python scripts/update_translation_status.py
 ```
 
