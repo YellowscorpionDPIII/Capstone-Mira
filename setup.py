@@ -23,6 +23,7 @@ setup(
         'Programming Language :: Python :: 3.9',
         'Programming Language :: Python :: 3.10',
         'Programming Language :: Python :: 3.11',
+        'Programming Language :: Python :: 3.12',
     ],
     python_requires='>=3.8',
     install_requires=[
@@ -32,6 +33,7 @@ setup(
         'dev': [
             'pytest>=7.0.0',
             'pytest-cov>=4.0.0',
+            'pytest-benchmark>=4.0.0',
         ],
     },
     entry_points={
