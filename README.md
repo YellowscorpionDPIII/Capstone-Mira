@@ -123,13 +123,63 @@ Capstone-Mira/
 │   │   └── logging.py
 │   ├── tests/                 # Test suite
 │   └── app.py                 # Main application
+├── governance/                # Governance and risk management
+│   ├── risk_assessor.py       # Risk assessment engine
+│   └── hitl_handler.py        # Human-in-the-Loop service
+├── config/                    # Configuration files
+│   └── governance.yaml        # Governance thresholds
 ├── examples/                  # Example scripts
-│   └── example_usage.py
+│   ├── example_usage.py
+│   └── risk_assessment_example.py
 ├── requirements.txt
 ├── setup.py
 ├── DOCUMENTATION.md
 └── README.md
 ```
+
+## 🛡️ Governance & Risk Assessment
+
+The platform includes a comprehensive risk assessment engine that evaluates workflows based on:
+
+- **Financial Risk**: Transaction amounts and budget thresholds
+- **Compliance Risk**: GDPR, SOX, HIPAA, and other regulatory requirements
+- **Explainability Risk**: AI model interpretability and transparency
+
+### Risk Assessment Example
+
+```python
+from governance.risk_assessor import RiskAssessor
+
+# Initialize the risk assessor
+assessor = RiskAssessor()
+
+# Assess a workflow
+workflow_data = {
+    'financial_amount': 15000,
+    'compliance_data': {'gdpr': True, 'sox': True},
+    'ai_model_type': 'neural_network',
+    'explainability_score': 0.75
+}
+
+risk_score = assessor.assess_workflow("WF-001", workflow_data)
+
+print(f"Composite Risk Score: {risk_score.composite_score}")
+print(f"Requires HITL Review: {risk_score.requires_hitl}")
+```
+
+Run the full example:
+```bash
+python examples/risk_assessment_example.py
+```
+
+### Human-in-the-Loop (HITL)
+
+When workflows exceed risk thresholds, they are automatically queued for human review via:
+- Redis caching for risk scores
+- Celery task queue for async HITL reviews
+- FastAPI service for approval/rejection workflows
+
+See `governance/hitl_handler.py` for the HITL service API.
 
 ## 🤝 Contributing
 
