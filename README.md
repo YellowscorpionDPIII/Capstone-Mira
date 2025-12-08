@@ -76,6 +76,11 @@ See [DOCUMENTATION.md](DOCUMENTATION.md) for comprehensive documentation includi
 - Architecture overview
 - Extension guide
 
+### Supported Languages
+
+<!-- Badge reflects current translation status from docs/wiki/Localization.md - update counts as languages are completed -->
+[![Languages](https://img.shields.io/badge/languages-6_total_(1_complete%2C_1_in_progress%2C_4_planned)-blue.svg)](docs/wiki/Localization.md)
+
 ### Wiki
 
 Additional documentation is available in our [Wiki](docs/wiki/Home.md):
