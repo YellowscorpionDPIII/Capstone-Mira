@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  mira-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mira-app
+    ports:
+      - "5000:5000"
+    environment:
+      - FLASK_ENV=development
+      - WEBHOOK_ENABLED=true
+      - WEBHOOK_HOST=0.0.0.0
+      - WEBHOOK_PORT=5000
+      - WEBHOOK_SECRET_KEY=${WEBHOOK_SECRET_KEY:-default-secret-key}
+    volumes:
+      - ./mira:/app/mira
+      - ./config:/app/config
+    networks:
+      - mira-network
+    command: python -m mira.app
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: mira-n8n
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=admin
+      - N8N_HOST=0.0.0.0
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://mira-app:5000
+    volumes:
+      - n8n-data:/home/node/.n8n
+    networks:
+      - mira-network
+    depends_on:
+      - mira-app
+
+  redis:
+    image: redis:7-alpine
+    container_name: mira-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - mira-network
+    volumes:
+      - redis-data:/data
+
+networks:
+  mira-network:
+    driver: bridge
+
+volumes:
+  n8n-data:
+  redis-data:

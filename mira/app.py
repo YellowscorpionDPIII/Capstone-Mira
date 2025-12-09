@@ -74,6 +74,7 @@ class MiraApplication:
         self.webhook_handler.register_handler('github', self._handle_github_webhook)
         self.webhook_handler.register_handler('trello', self._handle_trello_webhook)
         self.webhook_handler.register_handler('jira', self._handle_jira_webhook)
+        self.webhook_handler.register_handler('n8n', self._handle_n8n_webhook)
         
     def _handle_github_webhook(self, data: dict) -> dict:
         """Handle GitHub webhook events."""
@@ -89,6 +90,12 @@ class MiraApplication:
         """Handle Jira webhook events."""
         # Process Jira events and route to appropriate agents
         return {'status': 'processed', 'service': 'jira'}
+    
+    def _handle_n8n_webhook(self, data: dict) -> dict:
+        """Handle n8n webhook events."""
+        # Process n8n workflow events and route to appropriate agents
+        self.broker.publish('n8n_event', data)
+        return {'status': 'processed', 'service': 'n8n'}
         
     def start(self):
         """Start the Mira application."""
