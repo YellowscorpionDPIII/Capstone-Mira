@@ -27,7 +27,9 @@ setup(
     ],
     python_requires='>=3.8',
     install_requires=[
-        'Flask>=3.0.0',
+        'Quart>=0.19.4',
+        'quart-openapi>=1.6.0',
+        'locust>=2.24.0',
     ],
     extras_require={
         'dev': [
