@@ -29,6 +29,11 @@ class WebhookHandler:
     def _setup_routes(self):
         """Set up Flask routes for webhooks."""
         
+        @self.app.route('/health', methods=['GET'])
+        def health_check():
+            """Health check endpoint for monitoring."""
+            return jsonify({'status': 'healthy', 'service': 'mira'}), 200
+        
         @self.app.route('/webhook/<service>', methods=['POST'])
         def handle_webhook(service: str):
             """Handle incoming webhook."""

@@ -131,6 +131,33 @@ Capstone-Mira/
 └── README.md
 ```
 
+## 🚀 Deployment
+
+Mira supports continuous deployment to Google Cloud Platform (GCP) using GitHub Actions.
+
+### Quick Deploy to GCP
+
+The application automatically deploys to Google Cloud Run when changes are pushed to the main branch.
+
+For detailed deployment instructions, including:
+- GCP project setup and configuration
+- GitHub repository secrets configuration
+- Service account permissions
+- Workload Identity Federation setup
+- Monitoring and troubleshooting
+
+See the comprehensive [GCP Deployment Guide](docs/GCP_DEPLOYMENT.md).
+
+### Local Docker Development
+
+```bash
+# Build Docker image
+docker build -t mira .
+
+# Run container
+docker run -p 5000:5000 mira
+```
+
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
