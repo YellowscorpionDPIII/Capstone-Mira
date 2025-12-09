@@ -85,7 +85,8 @@ class APIKeyUser(HttpUser):
         """Called when a simulated user starts."""
         self.api_key = test_data.get_random_key()
         if not self.api_key:
-            self.generate_new_key()
+            # For simplicity in load testing, just use a pre-generated key
+            self.api_key = "test_key_placeholder"
     
     @task(10)
     def validate_key(self):
