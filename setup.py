@@ -28,12 +28,16 @@ setup(
     python_requires='>=3.8',
     install_requires=[
         'Flask>=3.0.0',
+        'Quart>=0.19.0',
+        'structlog>=23.1.0',
+        'redis[hiredis]>=5.0.0',
     ],
     extras_require={
         'dev': [
             'pytest>=7.0.0',
             'pytest-cov>=4.0.0',
             'pytest-benchmark>=4.0.0',
+            'pytest-asyncio>=0.21.0',
         ],
     },
     entry_points={
