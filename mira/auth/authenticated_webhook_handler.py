@@ -5,6 +5,7 @@ import structlog
 import hmac
 import hashlib
 import time
+import json
 from datetime import datetime
 import redis.asyncio as aioredis
 
@@ -42,7 +43,6 @@ class AuthenticatedWebhookHandler:
         # Metrics for health endpoint
         self.cache_hits = 0
         self.cache_misses = 0
-        self.active_keys_count = len(self.api_keys)
         
         # Setup structured logging
         self.logger = structlog.get_logger("mira.auth.webhook")
@@ -58,6 +58,11 @@ class AuthenticatedWebhookHandler:
                 decode_responses=True
             )
             self.logger.info("redis_connected", url=self.redis_url)
+    
+    @property
+    def active_keys_count(self) -> int:
+        """Get the count of active API keys."""
+        return len(self.api_keys)
     
     def _setup_middleware(self):
         """Set up structlog middleware for request logging."""
@@ -115,7 +120,7 @@ class AuthenticatedWebhookHandler:
                         self.logger.warning("signature_verification_failed")
                         return jsonify({'error': 'Invalid signature'}), 403
                 
-                data = await request.json or {}
+                data = await request.get_json() or {}
                 self.logger.info("webhook_received", service=service, key_id=auth_result['key_id'])
                 
                 # Route to appropriate handler
@@ -198,7 +203,6 @@ class AuthenticatedWebhookHandler:
         # Validate key
         if cached_data:
             # Use cached validation result
-            import json
             key_data = json.loads(cached_data)
         elif key_id in self.api_keys:
             key_data = self.api_keys[key_id]
@@ -206,7 +210,6 @@ class AuthenticatedWebhookHandler:
             # Cache the key data with TTL
             if self.redis_client and 'expiry' in key_data:
                 try:
-                    import json
                     ttl = key_data['expiry'] - int(time.time())
                     if ttl > 0:
                         await self.redis_client.setex(
@@ -295,7 +298,6 @@ class AuthenticatedWebhookHandler:
             'role': role,
             'expiry': expiry
         }
-        self.active_keys_count = len(self.api_keys)
         self.logger.info("api_key_added", key_id=key_id, role=role)
     
     async def cleanup(self):

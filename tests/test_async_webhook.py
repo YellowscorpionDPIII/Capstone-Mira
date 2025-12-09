@@ -2,6 +2,9 @@
 import pytest
 import asyncio
 import time
+import json
+import hmac
+import hashlib
 from unittest.mock import AsyncMock, MagicMock, patch
 from mira.auth.authenticated_webhook_handler import AuthenticatedWebhookHandler
 
@@ -235,7 +238,6 @@ class TestAuthenticatedWebhookHandler:
                 assert handler.cache_misses == 1
             
             # Simulate cache hit
-            import json
             redis_mock.get.return_value = json.dumps({
                 'key': 'secret_key_1',
                 'role': 'admin',
@@ -270,9 +272,6 @@ class TestAuthenticatedWebhookHandler:
     
     def test_signature_verification(self, webhook_handler):
         """Test webhook signature verification."""
-        import hmac
-        import hashlib
-        
         payload = b'{"event": "test"}'
         signature = 'sha256=' + hmac.new(
             webhook_handler.secret_key.encode(),
