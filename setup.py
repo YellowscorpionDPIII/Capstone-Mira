@@ -27,7 +27,7 @@ setup(
     ],
     python_requires='>=3.8',
     install_requires=[
-        'Quart>=0.19.4',
+        'Flask>=3.0.0',
         'locust>=2.24.0',
     ],
     extras_require={

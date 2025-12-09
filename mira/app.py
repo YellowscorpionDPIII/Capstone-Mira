@@ -1,7 +1,7 @@
 """Main application entry point for Mira platform."""
 from typing import Optional
 from mira.core.message_broker import get_broker
-from mira.core.webhook_handler_quart import WebhookHandler
+from mira.core.webhook_handler import WebhookHandler
 from mira.agents.project_plan_agent import ProjectPlanAgent
 from mira.agents.risk_assessment_agent import RiskAssessmentAgent
 from mira.agents.status_reporter_agent import StatusReporterAgent
