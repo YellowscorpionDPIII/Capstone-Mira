@@ -243,11 +243,7 @@ class OrchestratorAgent(BaseAgent):
                 f"Invalid workflow data type: expected dict, got {type(data).__name__}. "
                 f"Agent state: agent_id={self.agent_id}"
             )
-            return {
-                'workflow_type': None,
-                'steps': [],
-                'error': 'Workflow data must be a dictionary'
-            }
+            return self.create_response('error', None, 'Workflow data must be a dictionary')
         
         workflow_type = data.get('workflow_type')
         workflow_data = data.get('data', {})
