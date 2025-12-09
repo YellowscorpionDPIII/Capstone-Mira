@@ -189,40 +189,30 @@ class TestWebhookHandler(unittest.TestCase):
         
     def test_load_operator_keys_from_file(self):
         """Test loading operator keys from file."""
-        # Create a temporary config directory and file
-        with tempfile.TemporaryDirectory() as tmpdir:
-            config_dir = os.path.join(tmpdir, 'config')
-            os.makedirs(config_dir, exist_ok=True)
-            keys_file = os.path.join(config_dir, 'operator_keys.txt')
+        import tempfile
+        
+        # Create a temporary file and set it via environment variable
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f:
+            temp_keys_file = f.name
+            f.write('file_key1\n')
+            f.write('file_key2\n')
+            f.write('# This is a comment\n')
+            f.write('file_key3\n')
+        
+        try:
+            # Set environment variable to point to temp file
+            os.environ['OPERATOR_KEYS_FILE'] = temp_keys_file
+            handler = WebhookHandler()
             
-            with open(keys_file, 'w') as f:
-                f.write('file_key1\n')
-                f.write('file_key2\n')
-                f.write('# This is a comment\n')
-                f.write('file_key3\n')
-            
-            # Temporarily change the keys file path
-            original_file = os.path.join(os.path.dirname(__file__), '..', '..', 'config', 'operator_keys.txt')
-            if os.path.exists(original_file):
-                os.rename(original_file, original_file + '.bak')
-            
-            # Create the config directory for the handler
-            config_path = os.path.join(os.path.dirname(__file__), '..', '..', 'config')
-            os.makedirs(config_path, exist_ok=True)
-            os.rename(keys_file, os.path.join(config_path, 'operator_keys.txt'))
-            
-            try:
-                handler = WebhookHandler()
-                self.assertIn('file_key1', handler.operator_keys)
-                self.assertIn('file_key2', handler.operator_keys)
-                self.assertIn('file_key3', handler.operator_keys)
-            finally:
-                # Cleanup
-                test_keys_file = os.path.join(config_path, 'operator_keys.txt')
-                if os.path.exists(test_keys_file):
-                    os.remove(test_keys_file)
-                if os.path.exists(original_file + '.bak'):
-                    os.rename(original_file + '.bak', original_file)
+            self.assertIn('file_key1', handler.operator_keys)
+            self.assertIn('file_key2', handler.operator_keys)
+            self.assertIn('file_key3', handler.operator_keys)
+        finally:
+            # Cleanup
+            if 'OPERATOR_KEYS_FILE' in os.environ:
+                del os.environ['OPERATOR_KEYS_FILE']
+            if os.path.exists(temp_keys_file):
+                os.remove(temp_keys_file)
 
 
 if __name__ == '__main__':

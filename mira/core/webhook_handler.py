@@ -40,8 +40,9 @@ class WebhookHandler:
                 if key:
                     self.operator_keys.add(key)
         
-        # Load from file if exists
-        keys_file = os.path.join(os.path.dirname(__file__), '..', '..', 'config', 'operator_keys.txt')
+        # Load from file if exists - use configurable path
+        keys_file = os.getenv('OPERATOR_KEYS_FILE', 
+                             os.path.join(os.path.dirname(__file__), '..', '..', 'config', 'operator_keys.txt'))
         if os.path.exists(keys_file):
             with open(keys_file, 'r') as f:
                 for line in f:
@@ -61,8 +62,9 @@ class WebhookHandler:
         key = f"op_{secrets.token_hex(16)}"
         self.operator_keys.add(key)
         
-        # Save to file
-        keys_file = os.path.join(os.path.dirname(__file__), '..', '..', 'config', 'operator_keys.txt')
+        # Save to file - use configurable path
+        keys_file = os.getenv('OPERATOR_KEYS_FILE',
+                             os.path.join(os.path.dirname(__file__), '..', '..', 'config', 'operator_keys.txt'))
         os.makedirs(os.path.dirname(keys_file), exist_ok=True)
         with open(keys_file, 'a') as f:
             f.write(f"{key}\n")

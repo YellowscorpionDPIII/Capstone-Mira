@@ -96,11 +96,25 @@ echo -e "${GREEN}Tests passed!${NC}"
 
 echo -e "${GREEN}Step 2: Running CodeQL security scan...${NC}"
 if command -v codeql &> /dev/null; then
-    echo "CodeQL found, running security analysis..."
-    # Note: This is a placeholder. In actual CI/CD, CodeQL would be properly configured
-    echo -e "${YELLOW}Warning: CodeQL scan should be run in CI/CD pipeline${NC}"
+    echo "Running CodeQL database creation and analysis..."
+    if [ -d "codeql-db" ]; then
+        rm -rf codeql-db
+    fi
+    codeql database create codeql-db --language=python --source-root=. || {
+        echo -e "${YELLOW}Warning: CodeQL database creation failed. Ensure code quality manually.${NC}"
+    }
+    if [ -d "codeql-db" ]; then
+        codeql database analyze codeql-db --format=sarif-latest --output=results.sarif || {
+            echo -e "${YELLOW}Warning: CodeQL analysis completed with issues. Review results.sarif${NC}"
+        }
+        if [ -f "results.sarif" ]; then
+            echo -e "${GREEN}CodeQL scan completed. Review results.sarif for findings.${NC}"
+        fi
+    fi
 else
-    echo -e "${YELLOW}Warning: CodeQL not found locally. Ensure security scans pass in CI/CD.${NC}"
+    echo -e "${YELLOW}Warning: CodeQL not found locally.${NC}"
+    echo -e "${YELLOW}Security scans must pass in CI/CD pipeline before production deployment.${NC}"
+    echo -e "${YELLOW}For staging deployment, ensure manual security review is completed.${NC}"
 fi
 
 echo -e "${GREEN}Step 3: Building Docker image...${NC}"
