@@ -56,7 +56,13 @@ class Config:
                 'enabled': False,
                 'host': '0.0.0.0',
                 'port': 5000,
-                'secret_key': None
+                'secret_key': None,
+                'use_authentication': True
+            },
+            'api_keys': {
+                'enabled': True,
+                'default_expiry_days': 90,
+                'storage_backend': 'airtable'
             },
             'logging': {
                 'level': 'INFO',
