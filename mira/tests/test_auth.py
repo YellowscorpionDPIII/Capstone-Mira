@@ -142,7 +142,7 @@ class TestApiKeyManager(unittest.TestCase):
     def test_list_keys_filter_by_status(self):
         """Test listing API keys filtered by status."""
         raw_key1, api_key1 = self.manager.generate_key(role='viewer')
-        raw_key2, api_key2 = self.manager.generate_key(role='admin')
+        _, api_key2 = self.manager.generate_key(role='admin')
         
         self.manager.revoke_key(api_key1.key_id)
         
