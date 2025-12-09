@@ -134,13 +134,6 @@ class OrchestratorAgent(BaseAgent):
             else:
                 return await self._route_message_async(message)
                 
-        except KeyError as e:
-            self.logger.error(
-                f"Missing required field in message: {e}. "
-                f"Message type: {message.get('type', 'unknown')}. "
-                f"Agent state: agent_id={self.agent_id}"
-            )
-            return self.create_response('error', None, f'Missing required field: {e}')
         except Exception as e:
             self.logger.error(
                 f"Error processing message: {e}. "
