@@ -193,7 +193,8 @@ class OrchestratorAgent(BaseAgent):
         """
         if workflow_type == 'project_initialization':
             # Step 1: Generate project plan
-            plan_response = await asyncio.get_event_loop().run_in_executor(
+            loop = asyncio.get_running_loop()
+            plan_response = await loop.run_in_executor(
                 None,
                 lambda: self._route_message({
                     'type': 'generate_plan',
@@ -209,7 +210,7 @@ class OrchestratorAgent(BaseAgent):
             # Step 2: Assess risks based on plan
             if plan_response['status'] == 'success':
                 plan = plan_response['data']
-                risk_response = await asyncio.get_event_loop().run_in_executor(
+                risk_response = await loop.run_in_executor(
                     None,
                     lambda: self._route_message({
                         'type': 'assess_risks',
@@ -226,7 +227,7 @@ class OrchestratorAgent(BaseAgent):
                 if risk_response['status'] == 'success':
                     risks = risk_response['data']
                     report_data = {**plan, 'risks': risks.get('risks', [])}
-                    report_response = await asyncio.get_event_loop().run_in_executor(
+                    report_response = await loop.run_in_executor(
                         None,
                         lambda: self._route_message({
                             'type': 'generate_report',
@@ -315,7 +316,8 @@ class OrchestratorAgent(BaseAgent):
                 return await self._execute_workflow_async(message['data'], timeout=timeout)
             else:
                 # For non-workflow messages, run synchronously in executor
-                return await asyncio.get_event_loop().run_in_executor(
+                loop = asyncio.get_running_loop()
+                return await loop.run_in_executor(
                     None,
                     lambda: self._route_message(message)
                 )

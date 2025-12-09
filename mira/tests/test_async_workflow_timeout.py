@@ -72,13 +72,16 @@ class TestAsyncWorkflowTimeout(unittest.TestCase):
         original_route = self.orchestrator._route_message
         call_count = [0]
         
-        def slow_route(msg):
+        async def slow_route_async(msg):
             call_count[0] += 1
             # First call succeeds quickly, subsequent calls are slow
             if call_count[0] > 1:
-                import time
-                time.sleep(3)  # Simulate slow operation
+                await asyncio.sleep(3)  # Simulate slow operation
             return original_route(msg)
+        
+        def slow_route(msg):
+            # Create a wrapper that runs the async function
+            return asyncio.run(slow_route_async(msg))
         
         with patch.object(self.orchestrator, '_route_message', side_effect=slow_route):
             # Run async workflow with very short timeout
@@ -286,13 +289,15 @@ class TestAsyncWorkflowTimeout(unittest.TestCase):
         original_route = self.orchestrator._route_message
         call_count = [0]
         
-        def selective_slow_route(msg):
+        async def selective_slow_route_async(msg):
             call_count[0] += 1
             # Second call (risk assessment) is slow
             if call_count[0] == 2:
-                import time
-                time.sleep(5)
+                await asyncio.sleep(5)
             return original_route(msg)
+        
+        def selective_slow_route(msg):
+            return asyncio.run(selective_slow_route_async(msg))
         
         with patch.object(self.orchestrator, '_route_message', side_effect=selective_slow_route):
             async def run_test():
