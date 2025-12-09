@@ -205,12 +205,16 @@ class OrchestratorAgent(BaseAgent):
             response = self._run_async_with_fallback(target_agent.process, message)
         """
         try:
-            # Try to run with asyncio timeout for production safety
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
+            # Try to get or create an event loop
+            try:
+                loop = asyncio.get_running_loop()
                 # If we're already in an event loop, just call synchronously
                 return func(*args, **kwargs)
-            else:
+            except RuntimeError:
+                # No running loop, create a new one
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                
                 # Run in thread pool with 30-second timeout
                 try:
                     response = loop.run_until_complete(
@@ -221,11 +225,17 @@ class OrchestratorAgent(BaseAgent):
                     )
                     return response
                 except asyncio.TimeoutError:
-                    self.logger.warning(f"Async execution timed out after 30s, falling back to synchronous execution")
+                    func_name = getattr(func, '__name__', str(func))
+                    self.logger.warning(
+                        f"Async execution of {func_name} timed out after 30s, falling back to synchronous execution"
+                    )
                     return func(*args, **kwargs)
+                finally:
+                    loop.close()
         except Exception as e:
             # Fallback to synchronous execution if async fails
-            self.logger.warning(f"Async execution failed ({str(e)}), falling back to synchronous execution")
+            func_name = getattr(func, '__name__', str(func))
+            self.logger.warning(f"Async execution of {func_name} failed ({str(e)}), falling back to synchronous execution")
             try:
                 return func(*args, **kwargs)
             except Exception as sync_error:
