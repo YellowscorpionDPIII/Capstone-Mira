@@ -89,12 +89,39 @@ Additional documentation is available in our [Wiki](docs/wiki/Home.md):
 ## 🧪 Testing
 
 ```bash
-# Run all tests
-python -m unittest discover mira/tests
+# Run all tests with 95% coverage requirement
+python -m pytest mira/tests/ --benchmark-disable
 
-# Run specific test module
-python -m unittest mira.tests.test_agents
+# Run with coverage report
+python -m pytest mira/tests/ --benchmark-disable --cov=mira/agents --cov=mira/core --cov-fail-under=95
 ```
+
+## 🐳 Docker Deployment
+
+### Local Testing with Docker Compose
+
+```bash
+# Start all services (Mira, n8n, Redis)
+docker-compose up
+
+# Generate operator key for webhook authentication
+python scripts/generate_operator_key.py
+
+# Run load tests
+locust -f load_test.py --host=http://localhost:5000
+```
+
+### GCP Deployment
+
+```bash
+# Deploy to staging
+./scripts/deploy_gcp.sh --env=staging
+
+# Deploy to production
+./scripts/deploy_gcp.sh --env=production --project=YOUR_PROJECT_ID
+```
+
+See [WORKFLOW.md](WORKFLOW.md) for detailed deployment workflow.
 
 ## 📁 Project Structure
 
