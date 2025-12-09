@@ -145,12 +145,22 @@ class User:
     
     def set_password(self, password: str):
         """
-        Set user password.
+        Set user password with secure hashing.
         
         Args:
             password: Plain text password
+        
+        Note: In production, use bcrypt, scrypt, or argon2 instead of SHA-256.
+        SHA-256 is used here for simplicity and no external dependencies.
+        For production deployment, replace with:
+        import bcrypt
+        self.password_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt())
         """
-        self.password_hash = hashlib.sha256(password.encode()).hexdigest()
+        # Add salt for basic protection against rainbow tables
+        import secrets
+        salt = secrets.token_hex(16)
+        salted_password = salt + password
+        self.password_hash = salt + ':' + hashlib.sha256(salted_password.encode()).hexdigest()
     
     def verify_password(self, password: str) -> bool:
         """
@@ -164,7 +174,17 @@ class User:
         """
         if not self.password_hash:
             return False
-        return self.password_hash == hashlib.sha256(password.encode()).hexdigest()
+        
+        # Parse salt and hash
+        parts = self.password_hash.split(':')
+        if len(parts) != 2:
+            # Legacy format without salt (for backward compatibility)
+            return self.password_hash == hashlib.sha256(password.encode()).hexdigest()
+        
+        salt, stored_hash = parts
+        salted_password = salt + password
+        computed_hash = hashlib.sha256(salted_password.encode()).hexdigest()
+        return computed_hash == stored_hash
     
     def has_permission(self, permission: Permission) -> bool:
         """

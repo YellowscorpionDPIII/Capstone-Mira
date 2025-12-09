@@ -41,18 +41,21 @@ class PerformanceMetrics:
         
         values = self.metrics[name]
         sorted_values = sorted(values)
-        p95_index = int(len(sorted_values) * 0.95)
-        p99_index = int(len(sorted_values) * 0.99)
+        count = len(sorted_values)
+        
+        # Safe percentile calculation with bounds checking
+        p95_index = max(0, min(int(count * 0.95), count - 1))
+        p99_index = max(0, min(int(count * 0.99), count - 1))
         
         return {
-            'count': len(values),
+            'count': count,
             'min': min(values),
             'max': max(values),
             'mean': statistics.mean(values),
             'median': statistics.median(values),
-            'p95': sorted_values[p95_index] if sorted_values else 0,
-            'p99': sorted_values[p99_index] if sorted_values else 0,
-            'stdev': statistics.stdev(values) if len(values) > 1 else 0
+            'p95': sorted_values[p95_index],
+            'p99': sorted_values[p99_index],
+            'stdev': statistics.stdev(values) if count > 1 else 0
         }
     
     def get_all_stats(self) -> Dict[str, Dict[str, float]]:

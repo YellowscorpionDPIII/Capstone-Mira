@@ -17,19 +17,49 @@ class RateLimiter:
     Designed to handle 10k daily webhooks with burst tolerance.
     """
     
-    def __init__(self, max_requests: int = 10000, window_seconds: int = 86400):
+    def __init__(self, max_requests: int = 10000, window_seconds: int = 86400,
+                 max_clients: int = 10000):
         """
         Initialize rate limiter.
         
         Args:
             max_requests: Maximum requests per window (default: 10k/day)
             window_seconds: Time window in seconds (default: 24 hours)
+            max_clients: Maximum number of clients to track (default: 10k)
         """
         self.max_requests = max_requests
         self.window_seconds = window_seconds
+        self.max_clients = max_clients
         self.requests: Dict[str, deque] = defaultdict(deque)
         self.lock = Lock()
         self.logger = logging.getLogger("mira.ratelimit")
+        self._cleanup_counter = 0
+    
+    def _cleanup_old_clients(self):
+        """
+        Periodic cleanup of inactive clients to prevent memory leaks.
+        Called every 1000 requests to avoid overhead.
+        """
+        now = time.time()
+        cutoff = now - self.window_seconds
+        
+        # Remove clients with no recent requests
+        clients_to_remove = []
+        for client_id, client_requests in self.requests.items():
+            if not client_requests or client_requests[-1] < cutoff:
+                clients_to_remove.append(client_id)
+        
+        for client_id in clients_to_remove:
+            del self.requests[client_id]
+        
+        # Enforce max clients limit (remove oldest)
+        if len(self.requests) > self.max_clients:
+            sorted_clients = sorted(
+                self.requests.items(),
+                key=lambda x: x[1][-1] if x[1] else 0
+            )
+            for client_id, _ in sorted_clients[:len(self.requests) - self.max_clients]:
+                del self.requests[client_id]
     
     def is_allowed(self, client_id: str = 'default') -> bool:
         """
@@ -42,6 +72,12 @@ class RateLimiter:
             True if request is allowed
         """
         with self.lock:
+            # Periodic cleanup to prevent memory leaks
+            self._cleanup_counter += 1
+            if self._cleanup_counter >= 1000:
+                self._cleanup_old_clients()
+                self._cleanup_counter = 0
+            
             now = time.time()
             cutoff = now - self.window_seconds
             
