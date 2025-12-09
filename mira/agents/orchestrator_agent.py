@@ -17,15 +17,22 @@ def _run_async_with_fallback(coro):
         Result of the coroutine
     """
     try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        # No running event loop, safe to use asyncio.run
         return asyncio.run(coro)
-    except RuntimeError as e:
-        if "cannot be called from a running event loop" in str(e):
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(asyncio.run, coro)
-                return future.result()
-        raise
-
-
+    else:
+        # Already in an event loop, run in a separate thread with a new event loop
+        def run_in_new_loop(coro):
+            new_loop = asyncio.new_event_loop()
+            try:
+                asyncio.set_event_loop(new_loop)
+                return new_loop.run_until_complete(coro)
+            finally:
+                new_loop.close()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(run_in_new_loop, coro)
+            return future.result()
 class OrchestratorAgent(BaseAgent):
     """
     Agent responsible for orchestrating workflow between other agents.
