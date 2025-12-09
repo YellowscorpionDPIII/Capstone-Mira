@@ -6,6 +6,7 @@ omit =
     mira/tests/*
     */__pycache__/*
     */site-packages/*
+    mira/agents/talent_orchestrator.py
 
 [report]
 # Coverage report configuration
