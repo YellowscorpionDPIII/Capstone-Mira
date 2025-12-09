@@ -134,14 +134,22 @@ class ApiKeyManager:
         """
         key_hash = self._hash_key(raw_key)
         
-        # Check cache first
-        api_key = self._keys_cache.get(key_hash)
+        # Check cache first using constant-time comparison
+        api_key = None
+        for cached_key in self._keys_cache.values():
+            if secrets.compare_digest(cached_key.key_hash, key_hash):
+                api_key = cached_key
+                break
         
-        # If not in cache, try loading from storage
+        # If not in cache, try loading from storage using constant-time comparison
         if not api_key and self.storage:
-            api_key = self._load_key_from_storage(key_hash)
-            if api_key:
-                self._keys_cache[key_hash] = api_key
+            # Load all keys from storage (assuming self.storage provides a way to iterate)
+            all_keys = self.storage.load_all_keys() if hasattr(self.storage, "load_all_keys") else []
+            for stored_key in all_keys:
+                if secrets.compare_digest(stored_key.key_hash, key_hash):
+                    api_key = stored_key
+                    self._keys_cache[key_hash] = api_key
+                    break
         
         if not api_key:
             self.logger.warning("API key validation failed: key not found")
