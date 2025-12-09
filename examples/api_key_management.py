@@ -1,8 +1,6 @@
 """Example: API key management and authenticated webhook usage."""
-from mira.auth import ApiKeyManager, AuthenticatedWebhookHandler
+from mira.auth import ApiKeyManager
 from mira.integrations.airtable_integration import AirtableIntegration
-from mira.config.settings import get_config
-import json
 
 
 def example_generate_api_keys():
@@ -163,7 +161,10 @@ def example_list_and_manage_keys():
     if viewer_keys:
         key_to_revoke = viewer_keys[0]
         success = manager.revoke_key(key_to_revoke.key_id)
-        print(f"\n✓ Revoked key: {key_to_revoke.key_id}")
+        if success:
+            print(f"\n✓ Revoked key: {key_to_revoke.key_id}")
+        else:
+            print(f"\n✗ Failed to revoke key: {key_to_revoke.key_id}")
     
     # List active vs revoked
     active_keys = manager.list_keys(status='active')

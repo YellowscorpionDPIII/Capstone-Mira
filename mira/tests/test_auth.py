@@ -1,9 +1,7 @@
 """Tests for authentication and API key management."""
 import unittest
-from unittest.mock import Mock, patch
-from datetime import datetime, timedelta
+from unittest.mock import Mock
 from mira.auth.api_key_manager import ApiKeyManager, ApiKey
-from mira.auth.middleware import AuthMiddleware
 from mira.integrations.airtable_integration import AirtableIntegration
 
 
@@ -30,14 +28,14 @@ class TestApiKeyManager(unittest.TestCase):
     
     def test_generate_key_admin(self):
         """Test generating an admin API key."""
-        raw_key, api_key = self.manager.generate_key(role='admin')
+        _, api_key = self.manager.generate_key(role='admin')
         
         self.assertEqual(api_key.role, 'admin')
         self.assertEqual(api_key.status, 'active')
     
     def test_generate_key_operator(self):
         """Test generating an operator API key."""
-        raw_key, api_key = self.manager.generate_key(role='operator')
+        _, api_key = self.manager.generate_key(role='operator')
         
         self.assertEqual(api_key.role, 'operator')
         self.assertEqual(api_key.status, 'active')
@@ -49,7 +47,7 @@ class TestApiKeyManager(unittest.TestCase):
     
     def test_generate_key_no_expiry(self):
         """Test generating a key with no expiration."""
-        raw_key, api_key = self.manager.generate_key(role='admin', expiry_days=0)
+        _, api_key = self.manager.generate_key(role='admin', expiry_days=0)
         
         self.assertIsNone(api_key.expires_at)
     
@@ -143,8 +141,8 @@ class TestApiKeyManager(unittest.TestCase):
     
     def test_list_keys_filter_by_status(self):
         """Test listing API keys filtered by status."""
-        raw_key1, api_key1 = self.manager.generate_key(role='viewer')
-        raw_key2, api_key2 = self.manager.generate_key(role='admin')
+        _, api_key1 = self.manager.generate_key(role='viewer')
+        _, api_key2 = self.manager.generate_key(role='admin')
         
         self.manager.revoke_key(api_key1.key_id)
         
@@ -156,7 +154,7 @@ class TestApiKeyManager(unittest.TestCase):
     
     def test_check_permission_viewer(self):
         """Test permission checking for viewer role."""
-        raw_key, api_key = self.manager.generate_key(role='viewer')
+        _, api_key = self.manager.generate_key(role='viewer')
         
         self.assertTrue(self.manager.check_permission(api_key, 'read'))
         self.assertTrue(self.manager.check_permission(api_key, 'list'))
@@ -165,7 +163,7 @@ class TestApiKeyManager(unittest.TestCase):
     
     def test_check_permission_operator(self):
         """Test permission checking for operator role."""
-        raw_key, api_key = self.manager.generate_key(role='operator')
+        _, api_key = self.manager.generate_key(role='operator')
         
         self.assertTrue(self.manager.check_permission(api_key, 'read'))
         self.assertTrue(self.manager.check_permission(api_key, 'write'))
@@ -174,7 +172,7 @@ class TestApiKeyManager(unittest.TestCase):
     
     def test_check_permission_admin(self):
         """Test permission checking for admin role."""
-        raw_key, api_key = self.manager.generate_key(role='admin')
+        _, api_key = self.manager.generate_key(role='admin')
         
         self.assertTrue(self.manager.check_permission(api_key, 'read'))
         self.assertTrue(self.manager.check_permission(api_key, 'write'))
@@ -199,7 +197,7 @@ class TestApiKeyManagerWithStorage(unittest.TestCase):
     
     def test_generate_key_saves_to_storage(self):
         """Test that generating a key saves it to storage."""
-        raw_key, api_key = self.manager.generate_key(role='viewer')
+        _, api_key = self.manager.generate_key(role='viewer')
         
         # Verify storage was called
         self.mock_storage.sync_data.assert_called()
@@ -218,7 +216,7 @@ class TestApiKey(unittest.TestCase):
             key_hash='hash123',
             role='viewer',
             created_at='2025-12-09T00:00:00',
-            expires_at='2025-03-09T00:00:00',
+            expires_at='2026-03-09T00:00:00',
             last_used=None,
             status='active',
             name='Test Key'
@@ -237,7 +235,7 @@ class TestApiKey(unittest.TestCase):
             'key_hash': 'hash123',
             'role': 'admin',
             'created_at': '2025-12-09T00:00:00',
-            'expires_at': '2025-03-09T00:00:00',
+            'expires_at': '2026-03-09T00:00:00',
             'last_used': None,
             'status': 'active',
             'name': 'Test Key'

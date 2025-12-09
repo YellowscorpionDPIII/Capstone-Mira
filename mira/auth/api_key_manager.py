@@ -1,10 +1,9 @@
 """API key management for HITL environment."""
 import secrets
 import hashlib
-import json
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 from dataclasses import dataclass, asdict
 
 
@@ -74,7 +73,7 @@ class ApiKeyManager:
         role: str,
         name: Optional[str] = None,
         expiry_days: Optional[int] = None
-    ) -> tuple[str, ApiKey]:
+    ) -> Tuple[str, ApiKey]:
         """
         Generate a new API key with specified role.
         
@@ -135,8 +134,12 @@ class ApiKeyManager:
         """
         key_hash = self._hash_key(raw_key)
         
-        # Check cache first
-        api_key = self._keys_cache.get(key_hash)
+        # Check cache first using constant-time comparison to prevent timing attacks
+        api_key = None
+        for cached_hash, cached_key in self._keys_cache.items():
+            if secrets.compare_digest(cached_hash, key_hash):
+                api_key = cached_key
+                break
         
         # If not in cache, try loading from storage
         if not api_key and self.storage:
@@ -190,7 +193,7 @@ class ApiKeyManager:
         self.logger.info(f"Revoked API key: {key_id}")
         return True
     
-    def rotate_key(self, old_key_id: str, role: Optional[str] = None) -> tuple[str, ApiKey]:
+    def rotate_key(self, old_key_id: str, role: Optional[str] = None) -> Tuple[str, ApiKey]:
         """
         Rotate an API key by creating a new one and revoking the old.
         
