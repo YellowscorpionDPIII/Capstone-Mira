@@ -153,7 +153,7 @@ class AirtableIntegration(BaseIntegration):
         elif action == 'get':
             # Get API key by hash
             key_hash = data.get('key_hash')
-            self.logger.info(f"Retrieved API key by hash from Airtable")
+            self.logger.info(f"Retrieved API key by hash: {key_hash} from Airtable")
             return {'success': False, 'error': 'Key not found'}
             
         elif action == 'get_by_id':
