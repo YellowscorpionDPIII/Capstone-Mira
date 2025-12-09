@@ -261,9 +261,7 @@ class ApiKeyManager:
     
     def _generate_secure_key(self) -> str:
         """Generate a cryptographically secure API key."""
-        # Generate 32 bytes (256 bits) of random data
-        random_bytes = secrets.token_bytes(32)
-        # Encode as URL-safe base64
+        # Generate 32 bytes (256 bits) and encode as URL-safe base64
         return secrets.token_urlsafe(32)
     
     def _generate_key_id(self) -> str:
