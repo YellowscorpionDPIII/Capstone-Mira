@@ -505,6 +505,42 @@ class TestOrchestratorAgent(unittest.TestCase):
         response = self.orchestrator.process(message)
         self.assertEqual(response['status'], 'success')
     
+    def test_log_message_format_consistency(self):
+        """Test that log messages contain message_type for consistency."""
+        import logging
+        from unittest.mock import patch
+        
+        # Mock the logger's info method to capture the call
+        with patch.object(self.orchestrator.logger, 'info') as mock_log:
+            message = {
+                'type': 'generate_plan',
+                'data': {
+                    'name': 'Test Project',
+                    'goals': ['Goal 1'],
+                    'duration_weeks': 8
+                }
+            }
+            
+            response = self.orchestrator.process(message)
+            
+            # Verify the response is successful
+            self.assertEqual(response['status'], 'success')
+            
+            # Verify log was called with message_type in extra dict
+            mock_log.assert_called()
+            
+            # Check that at least one call contains message_type='generate_plan'
+            found_message_type = False
+            for call in mock_log.call_args_list:
+                args, kwargs = call
+                if 'extra' in kwargs and 'message_type' in kwargs['extra']:
+                    # Assert that the log contains message_type='generate_plan' for consistency verification
+                    self.assertEqual(kwargs['extra']['message_type'], 'generate_plan')
+                    found_message_type = True
+                    break
+            
+            self.assertTrue(found_message_type, "Expected log call with message_type='generate_plan' not found")
+    
     def test_route_to_roadmapping_agent(self):
         """Test routing to roadmapping agent."""
         message = {

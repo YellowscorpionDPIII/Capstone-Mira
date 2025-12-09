@@ -114,8 +114,8 @@ class OrchestratorAgent(BaseAgent):
             return self.create_response('error', None, f'Agent not found: {target_agent_id}')
             
         # Route message to target agent
-        self.logger.info(f"Routing {message_type} to {target_agent_id}")
-        response = target_agent.process(message)
+        self.logger.info(f"Routing {message_type} to {target_agent_id}", extra={'message_type': message_type})
+        response = self._run_async_with_fallback(target_agent.process, message)
         
         return response
         
@@ -179,6 +179,59 @@ class OrchestratorAgent(BaseAgent):
         self.logger.info(f"Completed workflow: {workflow_type}")
         return results
         
+    def _run_async_with_fallback(self, func, *args, **kwargs) -> Dict[str, Any]:
+        """
+        Execute a function with async timeout and fallback to synchronous execution.
+        
+        This method attempts to run the given function asynchronously with a timeout
+        for production safety. If the async execution times out or fails, it falls
+        back to synchronous execution to ensure reliability.
+        
+        Fallback behavior:
+        1. First, attempts to run the function in a thread pool with a 30-second timeout
+        2. If timeout occurs (asyncio.TimeoutError), falls back to direct synchronous call
+        3. If any other error occurs during async execution, falls back to synchronous call
+        4. If synchronous fallback also fails, returns an error response
+        
+        Args:
+            func: The function to execute (typically agent.process)
+            *args: Positional arguments to pass to the function
+            **kwargs: Keyword arguments to pass to the function
+            
+        Returns:
+            Dict[str, Any]: Response from the function execution or error response
+            
+        Example:
+            response = self._run_async_with_fallback(target_agent.process, message)
+        """
+        try:
+            # Try to run with asyncio timeout for production safety
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # If we're already in an event loop, just call synchronously
+                return func(*args, **kwargs)
+            else:
+                # Run in thread pool with 30-second timeout
+                try:
+                    response = loop.run_until_complete(
+                        asyncio.wait_for(
+                            asyncio.to_thread(func, *args, **kwargs),
+                            timeout=30.0
+                        )
+                    )
+                    return response
+                except asyncio.TimeoutError:
+                    self.logger.warning(f"Async execution timed out after 30s, falling back to synchronous execution")
+                    return func(*args, **kwargs)
+        except Exception as e:
+            # Fallback to synchronous execution if async fails
+            self.logger.warning(f"Async execution failed ({str(e)}), falling back to synchronous execution")
+            try:
+                return func(*args, **kwargs)
+            except Exception as sync_error:
+                self.logger.error(f"Both async and sync execution failed: {sync_error}")
+                return self.create_response('error', None, str(sync_error))
+    
     def add_routing_rule(self, message_type: str, agent_id: str):
         """
         Add a custom routing rule.
