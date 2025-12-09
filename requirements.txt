@@ -1,1 +1,40 @@
+# Core framework
 Flask==3.0.0
+Werkzeug==3.0.1
+
+# Rate limiting
+Flask-Limiter==3.5.0
+
+# Structured logging
+structlog==24.1.0
+python-json-logger==2.0.7
+
+# Redis caching
+redis==5.0.1
+hiredis==2.3.2
+
+# Async support
+aiohttp==3.9.1
+aiofiles==23.2.1
+
+# OpenAPI/Swagger documentation
+flask-restx==1.3.0
+flasgger==0.9.7.1
+
+# Load testing
+locust==2.20.0
+
+# Security
+flask-cors==4.0.0
+flask-talisman==1.1.0
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.23.2
+pytest-cov==4.1.0
+pytest-mock==3.12.0
+
+# Code quality
+pylint==3.0.3
+black==23.12.1
+flake8==7.0.0
