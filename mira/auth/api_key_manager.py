@@ -1,7 +1,6 @@
 """API key management for HITL environment."""
 import secrets
 import hashlib
-import json
 import logging
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
