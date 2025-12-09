@@ -14,7 +14,7 @@ redis==5.0.1
 hiredis==2.3.2
 
 # Async support
-aiohttp==3.9.1
+aiohttp==3.9.4  # Security: Fixed CVE-2024-23334 (DoS) and CVE-2024-23829 (directory traversal)
 aiofiles==23.2.1
 
 # OpenAPI/Swagger documentation
