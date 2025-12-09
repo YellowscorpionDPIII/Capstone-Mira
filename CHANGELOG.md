@@ -10,12 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added - Production Documentation & Infrastructure
 
 #### OpenAPI Documentation
-- Migrated from Flask to Quart for async webhook handling
-- Added quart-openapi integration for automatic API documentation
+- Enhanced Flask webhook handler with OpenAPI 3.0 specification
 - Interactive Swagger UI available at `/docs` endpoint
 - Comprehensive endpoint documentation with request/response examples
+- OpenAPI JSON spec available at `/openapi.json` endpoint
 - Health check endpoint (`/health`) for monitoring
 - Service listing endpoint (`/api/services`)
+- Full support for HMAC-SHA256 signature verification
+- Compatible with n8n, GitHub, Trello, Jira, and custom webhooks
 
 #### n8n Integration
 - Created n8n node templates for Mira webhook integration
