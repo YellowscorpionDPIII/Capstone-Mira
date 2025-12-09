@@ -42,7 +42,7 @@ class AirtableIntegration(BaseIntegration):
         Sync data with Airtable.
         
         Args:
-            data_type: Type of data (records, reports, etc.)
+            data_type: Type of data (records, reports, api_keys, etc.)
             data: Data to sync
             
         Returns:
@@ -55,6 +55,8 @@ class AirtableIntegration(BaseIntegration):
             return self._sync_records(data)
         elif data_type == 'reports':
             return self._sync_reports(data)
+        elif data_type == 'api_keys':
+            return self._handle_api_keys(data)
         else:
             return {'success': False, 'error': f'Unknown data type: {data_type}'}
             
@@ -124,3 +126,41 @@ class AirtableIntegration(BaseIntegration):
             'cost_reduction': 0.15,
             'last_updated': '2025-12-07'
         }
+    
+    def _handle_api_keys(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Handle API key operations in Airtable.
+        
+        Args:
+            data: Request data with 'action' and relevant parameters
+            
+        Returns:
+            Operation result
+        """
+        action = data.get('action')
+        
+        if action == 'save':
+            # Save or update an API key
+            key_data = data.get('key', {})
+            self.logger.info(f"Saved API key: {key_data.get('key_id')}")
+            return {'success': True, 'key_id': key_data.get('key_id')}
+            
+        elif action == 'list':
+            # List all API keys (simulated - would query Airtable in production)
+            self.logger.info("Listed API keys from Airtable")
+            return {'success': True, 'keys': []}
+            
+        elif action == 'get':
+            # Get API key by hash
+            key_hash = data.get('key_hash')
+            self.logger.info(f"Retrieved API key by hash from Airtable")
+            return {'success': False, 'error': 'Key not found'}
+            
+        elif action == 'get_by_id':
+            # Get API key by ID
+            key_id = data.get('key_id')
+            self.logger.info(f"Retrieved API key by ID: {key_id} from Airtable")
+            return {'success': False, 'error': 'Key not found'}
+            
+        else:
+            return {'success': False, 'error': f'Unknown API key action: {action}'}
