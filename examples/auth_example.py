@@ -250,4 +250,6 @@ def verify_token():
 
 
 if __name__ == '__main__':
+    # WARNING: Debug mode should NEVER be enabled in production
+    # This is for development/example purposes only
     app.run(debug=True, host='0.0.0.0', port=5001)
