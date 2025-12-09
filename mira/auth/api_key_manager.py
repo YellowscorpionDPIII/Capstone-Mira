@@ -99,7 +99,7 @@ class ApiKeyManager:
         
         # Calculate expiration
         created_at = datetime.utcnow()
-        expiry = expiry_days or self.default_expiry_days
+        expiry = expiry_days if expiry_days is not None else self.default_expiry_days
         expires_at = created_at + timedelta(days=expiry) if expiry > 0 else None
         
         # Create API key object
