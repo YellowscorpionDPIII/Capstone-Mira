@@ -40,14 +40,19 @@ def webhook_handler(api_keys):
 
 
 @pytest.fixture
-def mock_redis():
+async def mock_redis():
     """Mock Redis client."""
     with patch('redis.asyncio.from_url') as mock:
         redis_mock = AsyncMock()
         redis_mock.get = AsyncMock(return_value=None)
         redis_mock.setex = AsyncMock()
         redis_mock.close = AsyncMock()
-        mock.return_value = redis_mock
+        
+        # Make from_url return the mock directly (not awaitable)
+        async def async_from_url(*args, **kwargs):
+            return redis_mock
+        
+        mock.side_effect = async_from_url
         yield redis_mock
 
 
@@ -71,8 +76,8 @@ class TestAuthenticatedWebhookHandler:
     @pytest.mark.asyncio
     async def test_authenticate_valid_key(self, webhook_handler, mock_redis):
         """Test authentication with valid API key."""
-        # Mock request context
-        with webhook_handler.app.test_request_context(
+        # Mock request context using app test request context
+        async with webhook_handler.app.test_request_context(
             '/webhook/test',
             headers={
                 'X-API-Key-ID': 'test_key_1',
@@ -88,7 +93,7 @@ class TestAuthenticatedWebhookHandler:
     @pytest.mark.asyncio
     async def test_authenticate_invalid_key(self, webhook_handler, mock_redis):
         """Test authentication with invalid API key."""
-        with webhook_handler.app.test_request_context(
+        async with webhook_handler.app.test_request_context(
             '/webhook/test',
             headers={
                 'X-API-Key-ID': 'test_key_1',
@@ -103,7 +108,7 @@ class TestAuthenticatedWebhookHandler:
     @pytest.mark.asyncio
     async def test_authenticate_missing_key(self, webhook_handler, mock_redis):
         """Test authentication with missing API key."""
-        with webhook_handler.app.test_request_context(
+        async with webhook_handler.app.test_request_context(
             '/webhook/test',
             headers={}
         ):
@@ -115,7 +120,7 @@ class TestAuthenticatedWebhookHandler:
     @pytest.mark.asyncio
     async def test_authenticate_expired_key(self, webhook_handler, mock_redis):
         """Test authentication with expired API key."""
-        with webhook_handler.app.test_request_context(
+        async with webhook_handler.app.test_request_context(
             '/webhook/test',
             headers={
                 'X-API-Key-ID': 'expired_key',
@@ -196,38 +201,56 @@ class TestAuthenticatedWebhookHandler:
         assert 'cache_hit_rate' in data['metrics']
     
     @pytest.mark.asyncio
-    async def test_cache_metrics(self, webhook_handler, mock_redis):
+    async def test_cache_metrics(self, api_keys):
         """Test cache hit/miss metrics."""
-        # Simulate cache miss
-        mock_redis.get.return_value = None
-        
-        with webhook_handler.app.test_request_context(
-            '/webhook/test',
-            headers={
-                'X-API-Key-ID': 'test_key_1',
-                'X-API-Key': 'secret_key_1'
-            }
-        ):
-            await webhook_handler._authenticate_request()
-            assert webhook_handler.cache_misses == 1
-        
-        # Simulate cache hit
-        import json
-        mock_redis.get.return_value = json.dumps({
-            'key': 'secret_key_1',
-            'role': 'admin',
-            'expiry': int(time.time()) + 3600
-        })
-        
-        with webhook_handler.app.test_request_context(
-            '/webhook/test',
-            headers={
-                'X-API-Key-ID': 'test_key_1',
-                'X-API-Key': 'secret_key_1'
-            }
-        ):
-            await webhook_handler._authenticate_request()
-            assert webhook_handler.cache_hits == 1
+        # Create a fresh handler with mock redis for this test
+        with patch('redis.asyncio.from_url') as mock_from_url:
+            redis_mock = AsyncMock()
+            redis_mock.get = AsyncMock(return_value=None)
+            redis_mock.setex = AsyncMock()
+            redis_mock.close = AsyncMock()
+            
+            async def async_from_url(*args, **kwargs):
+                return redis_mock
+            
+            mock_from_url.side_effect = async_from_url
+            
+            handler = AuthenticatedWebhookHandler(
+                secret_key='test_secret',
+                redis_url='redis://localhost:6379/1',
+                api_keys=api_keys
+            )
+            
+            # Simulate cache miss
+            redis_mock.get.return_value = None
+            
+            async with handler.app.test_request_context(
+                '/webhook/test',
+                headers={
+                    'X-API-Key-ID': 'test_key_1',
+                    'X-API-Key': 'secret_key_1'
+                }
+            ):
+                await handler._authenticate_request()
+                assert handler.cache_misses == 1
+            
+            # Simulate cache hit
+            import json
+            redis_mock.get.return_value = json.dumps({
+                'key': 'secret_key_1',
+                'role': 'admin',
+                'expiry': int(time.time()) + 3600
+            })
+            
+            async with handler.app.test_request_context(
+                '/webhook/test',
+                headers={
+                    'X-API-Key-ID': 'test_key_1',
+                    'X-API-Key': 'secret_key_1'
+                }
+            ):
+                await handler._authenticate_request()
+                assert handler.cache_hits == 1
     
     @pytest.mark.asyncio
     async def test_add_api_key(self, webhook_handler):
@@ -261,12 +284,29 @@ class TestAuthenticatedWebhookHandler:
         assert webhook_handler._verify_signature(payload, 'sha256=invalid') is False
     
     @pytest.mark.asyncio
-    async def test_cleanup(self, webhook_handler, mock_redis):
+    async def test_cleanup(self, api_keys):
         """Test cleanup of resources."""
-        await webhook_handler._init_redis()
-        await webhook_handler.cleanup()
-        
-        mock_redis.close.assert_called_once()
+        with patch('redis.asyncio.from_url') as mock_from_url:
+            redis_mock = AsyncMock()
+            redis_mock.get = AsyncMock(return_value=None)
+            redis_mock.setex = AsyncMock()
+            redis_mock.close = AsyncMock()
+            
+            async def async_from_url(*args, **kwargs):
+                return redis_mock
+            
+            mock_from_url.side_effect = async_from_url
+            
+            handler = AuthenticatedWebhookHandler(
+                secret_key='test_secret',
+                redis_url='redis://localhost:6379/1',
+                api_keys=api_keys
+            )
+            
+            await handler._init_redis()
+            await handler.cleanup()
+            
+            redis_mock.close.assert_called_once()
 
 
 @pytest.mark.asyncio
