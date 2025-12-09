@@ -97,18 +97,20 @@ export WORKLOAD_IDENTITY_POOL_ID=$(gcloud iam workload-identity-pools describe g
   --format="value(name)")
 
 # Create Workload Identity Provider
+# Replace YOUR_GITHUB_USERNAME with your actual GitHub username or organization name
 gcloud iam workload-identity-pools providers create-oidc github-provider \
   --location="global" \
   --workload-identity-pool="github-pool" \
   --issuer-uri="https://token.actions.githubusercontent.com" \
   --attribute-mapping="google.subject=assertion.sub,attribute.actor=assertion.actor,attribute.repository=assertion.repository" \
-  --attribute-condition="assertion.repository=='YourGitHubUsername/Capstone-Mira'"
+  --attribute-condition="assertion.repository=='YOUR_GITHUB_USERNAME/Capstone-Mira'"
 
 # Allow GitHub Actions to impersonate the service account
+# Replace YOUR_GITHUB_USERNAME with your actual GitHub username or organization name
 gcloud iam service-accounts add-iam-policy-binding \
   github-actions-deployer@$PROJECT_ID.iam.gserviceaccount.com \
   --role="roles/iam.workloadIdentityUser" \
-  --member="principalSet://iam.googleapis.com/${WORKLOAD_IDENTITY_POOL_ID}/attribute.repository/YourGitHubUsername/Capstone-Mira"
+  --member="principalSet://iam.googleapis.com/${WORKLOAD_IDENTITY_POOL_ID}/attribute.repository/YOUR_GITHUB_USERNAME/Capstone-Mira"
 
 # Get the Workload Identity Provider name (for GitHub Secrets)
 gcloud iam workload-identity-pools providers describe github-provider \

@@ -80,7 +80,8 @@ gcloud run services update-traffic mira-app \
 
 ### View GitHub Actions runs:
 ```bash
-# Via web: https://github.com/YourUsername/Capstone-Mira/actions
+# Via web: https://github.com/YOUR_GITHUB_USERNAME/Capstone-Mira/actions
+# Replace YOUR_GITHUB_USERNAME with your actual GitHub username or organization name
 ```
 
 ## Deployment Configuration
