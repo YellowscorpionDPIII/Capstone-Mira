@@ -479,7 +479,6 @@ class TestOrchestratorAgentConcurrency(unittest.TestCase):
     def test_agent_registry_thread_safety(self):
         """Test that agent registry access is thread-safe during concurrent operations."""
         def register_and_process(agent_num):
-            agent = ProjectPlanAgent(agent_id=f"temp_agent_{agent_num}")
             # Note: In real concurrent scenarios, we'd need synchronization
             # This test validates that operations complete without errors
             message = {
