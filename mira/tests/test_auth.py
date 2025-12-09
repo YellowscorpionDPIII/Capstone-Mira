@@ -2,7 +2,6 @@
 import unittest
 from unittest.mock import Mock
 from mira.auth.api_key_manager import ApiKeyManager, ApiKey
-from mira.auth.middleware import AuthMiddleware
 from mira.integrations.airtable_integration import AirtableIntegration
 
 
