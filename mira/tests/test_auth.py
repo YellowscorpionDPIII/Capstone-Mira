@@ -197,7 +197,7 @@ class TestApiKeyManagerWithStorage(unittest.TestCase):
     
     def test_generate_key_saves_to_storage(self):
         """Test that generating a key saves it to storage."""
-        raw_key, api_key = self.manager.generate_key(role='viewer')
+        _, api_key = self.manager.generate_key(role='viewer')
         
         # Verify storage was called
         self.mock_storage.sync_data.assert_called()
