@@ -1,5 +1,5 @@
 """Enhanced webhook handler with authentication and API key management."""
-from typing import Dict, Any, Optional
+from typing import Optional
 from flask import request, jsonify
 from mira.core.webhook_handler import WebhookHandler
 from mira.auth.api_key_manager import ApiKeyManager
