@@ -1,6 +1,6 @@
 """Tests for authentication and API key management."""
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 from datetime import datetime, timedelta
 from mira.auth.api_key_manager import ApiKeyManager, ApiKey
 from mira.auth.middleware import AuthMiddleware
