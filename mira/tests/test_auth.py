@@ -2,6 +2,7 @@
 import unittest
 from unittest.mock import patch, MagicMock
 from datetime import datetime, timedelta
+import string
 import jwt
 from hypothesis import given, settings, strategies as st
 from mira.auth.api_key_manager import (
@@ -199,7 +200,7 @@ class TestAPIKeyManager(unittest.TestCase):
         self.assertEqual(len(keys), 2)
         for key_info in keys:
             self.assertEqual(key_info["user_id"], "user123")
-            self.assertIn("key_preview", key_info)
+            self.assertIn("key_hash_preview", key_info)
             
     def test_list_keys_for_user_unmasked(self):
         """Test listing keys without masking."""
@@ -208,7 +209,7 @@ class TestAPIKeyManager(unittest.TestCase):
         keys = self.manager.list_keys_for_user("user123", mask=False)
         
         self.assertEqual(len(keys), 1)
-        self.assertNotIn("key_preview", keys[0])
+        self.assertNotIn("key_hash_preview", keys[0])
 
 
 class TestAPIKeyManagerHypothesis(unittest.TestCase):
@@ -245,7 +246,7 @@ class TestAPIKeyManagerHypothesis(unittest.TestCase):
         with self.assertRaises(APIKeyValidationError):
             self.manager.validate_key(key)
             
-    @given(st.text(alphabet="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", min_size=32, max_size=64))
+    @given(st.text(alphabet=string.ascii_letters, min_size=32, max_size=64))
     @settings(max_examples=100)
     def test_alpha_only_keys_rejected(self, key: str):
         """Test that alphabetic-only keys are rejected."""

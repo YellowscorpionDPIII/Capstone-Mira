@@ -33,7 +33,7 @@ class APIKeyManager:
     WEAK_PATTERNS = [
         r'(.)\1{4,}',  # 5+ repeated characters
         r'(012|123|234|345|456|567|678|789|890){3,}',  # Sequential numbers
-        r'(abc|bcd|cde|def|efg|fgh|ghi|hij|ijk|jkl|klm|lmn|mno|nop|opq|pqr|qrs|rst|stu|tuv|uvw|vwx|wxy|xyz){3,}',  # Sequential letters
+        r'(abc|bcd|cde|def|efg|fgh|ghi|hij|ijk|jkl|klm|nop|opq|pqr|qrs|rst|stu|tuv|uvw|vwx|wxy|xyz){2,}',  # Sequential letters (simplified)
         r'^[0-9]+$',  # Only numbers
         r'^[a-zA-Z]+$',  # Only letters
     ]
@@ -274,9 +274,12 @@ class APIKeyManager:
         """
         List all API keys for a user.
         
+        Note: Since keys are hashed for storage, the actual keys are not retrievable.
+        This method returns metadata for keys associated with the user.
+        
         Args:
             user_id: User identifier
-            mask: Whether to mask the keys in response
+            mask: Whether to include masked key hash (for reference only)
             
         Returns:
             List of key metadata dictionaries
@@ -286,8 +289,8 @@ class APIKeyManager:
             if data["user_id"] == user_id:
                 key_info = data.copy()
                 if mask:
-                    # For masked view, we don't show the actual key
-                    key_info["key_preview"] = self.mask_key(key_hash)
+                    # Show masked hash for reference (not the actual key, which is not stored)
+                    key_info["key_hash_preview"] = self.mask_key(key_hash)
                 keys.append(key_info)
         
         return keys

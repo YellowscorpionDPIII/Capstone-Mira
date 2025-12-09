@@ -9,6 +9,7 @@ app = Flask(__name__)
 limiter = get_limiter(app)
 
 # Initialize API key manager
+# WARNING: In production, use environment variables or secure config for jwt_secret
 api_key_manager = APIKeyManager(jwt_secret="your-secret-key-here")
 
 
@@ -139,7 +140,8 @@ def list_keys(user_id: str):
     """
     List all API keys for a user (admin endpoint).
     
-    Keys are masked, showing only first and last 8 characters.
+    Note: Keys are hashed and not retrievable. The response shows
+    a masked hash preview (first/last 8 chars) for reference only.
     
     Returns:
     [
@@ -148,7 +150,7 @@ def list_keys(user_id: str):
             "role": "string",
             "created_at": "string",
             "last_used": "string",
-            "key_preview": "string"
+            "key_hash_preview": "string"
         }
     ]
     """
