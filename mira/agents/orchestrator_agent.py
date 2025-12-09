@@ -85,6 +85,13 @@ class OrchestratorAgent(BaseAgent):
             )
             raise ValueError("Agent must have an agent_id attribute")
         
+        if not isinstance(agent, BaseAgent):
+            self.logger.error(
+                f"Invalid agent: must be a BaseAgent instance. "
+                f"Agent state: agent_id={self.agent_id}"
+            )
+            raise ValueError("Agent must be a BaseAgent instance")
+        
         self.agent_registry[agent.agent_id] = agent
         self.logger.info(
             f"Registered agent: {agent.agent_id}. "
