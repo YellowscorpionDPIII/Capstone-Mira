@@ -10,7 +10,8 @@ import logging
 async def call_llm(prompt: str, model: str = None):
     client = config.llm_client()
     model = model or config.models.orchestrator
-    response = await asyncio.get_event_loop().run_in_executor(
+    loop = asyncio.get_running_loop()
+    response = await loop.run_in_executor(
         None,
         lambda: client.chat.completions.create(
             model=model,
@@ -271,7 +272,7 @@ class OrchestratorAgent(BaseAgent):
             
         except asyncio.TimeoutError:
             # Log detailed error message on timeout
-            completed_steps = [step['step'] for step in results.get('steps', [])]
+            completed_steps = [step.get('step', 'unknown') for step in results.get('steps', []) if isinstance(step, dict)]
             self.logger.error(
                 f"Workflow timeout after {timeout}s: workflow_type='{workflow_type}', "
                 f"message_type='workflow', completed_steps={completed_steps}, "
