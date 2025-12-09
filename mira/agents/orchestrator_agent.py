@@ -179,6 +179,151 @@ class OrchestratorAgent(BaseAgent):
         self.logger.info(f"Completed workflow: {workflow_type}")
         return results
         
+    async def _run_workflow_steps_async(self, workflow_type: str, workflow_data: Dict[str, Any], results: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Execute workflow steps asynchronously.
+        
+        Args:
+            workflow_type: Type of workflow to execute
+            workflow_data: Data for workflow execution
+            results: Results dictionary to populate with step results
+            
+        Returns:
+            Updated results dictionary with workflow execution results
+        """
+        if workflow_type == 'project_initialization':
+            # Step 1: Generate project plan
+            plan_response = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: self._route_message({
+                    'type': 'generate_plan',
+                    'data': workflow_data
+                })
+            )
+            results['steps'].append({
+                'step': 'generate_plan',
+                'status': plan_response['status'],
+                'result': plan_response.get('data')
+            })
+            
+            # Step 2: Assess risks based on plan
+            if plan_response['status'] == 'success':
+                plan = plan_response['data']
+                risk_response = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: self._route_message({
+                        'type': 'assess_risks',
+                        'data': plan
+                    })
+                )
+                results['steps'].append({
+                    'step': 'assess_risks',
+                    'status': risk_response['status'],
+                    'result': risk_response.get('data')
+                })
+                
+                # Step 3: Generate initial status report
+                if risk_response['status'] == 'success':
+                    risks = risk_response['data']
+                    report_data = {**plan, 'risks': risks.get('risks', [])}
+                    report_response = await asyncio.get_event_loop().run_in_executor(
+                        None,
+                        lambda: self._route_message({
+                            'type': 'generate_report',
+                            'data': report_data
+                        })
+                    )
+                    results['steps'].append({
+                        'step': 'generate_report',
+                        'status': report_response['status'],
+                        'result': report_response.get('data')
+                    })
+        
+        return results
+    
+    async def _execute_workflow_async(self, data: Dict[str, Any], timeout: float = 30.0) -> Dict[str, Any]:
+        """
+        Execute a multi-step workflow asynchronously with timeout protection.
+        
+        Args:
+            data: Workflow definition containing workflow_type and workflow data
+            timeout: Timeout in seconds (default: 30.0)
+            
+        Returns:
+            Workflow execution results, including partial progress if timeout occurs
+        """
+        workflow_type = data.get('workflow_type')
+        workflow_data = data.get('data', {})
+        
+        results = {
+            'workflow_type': workflow_type,
+            'steps': []
+        }
+        
+        try:
+            # Wrap workflow execution in asyncio.wait_for with timeout
+            results = await asyncio.wait_for(
+                self._run_workflow_steps_async(workflow_type, workflow_data, results),
+                timeout=timeout
+            )
+            self.logger.info(f"Completed workflow: {workflow_type}")
+            
+        except asyncio.TimeoutError:
+            # Log detailed error message on timeout
+            completed_steps = [step['step'] for step in results.get('steps', [])]
+            self.logger.error(
+                f"Workflow timeout after {timeout}s: workflow_type='{workflow_type}', "
+                f"message_type='workflow', completed_steps={completed_steps}, "
+                f"total_completed={len(completed_steps)}"
+            )
+            
+            # Return response indicating timeout with partial progress
+            results['status'] = 'timeout'
+            results['error'] = f'Workflow execution timed out after {timeout} seconds'
+            results['partial_progress'] = {
+                'completed_steps': completed_steps,
+                'total_steps_completed': len(completed_steps),
+                'timeout_seconds': timeout
+            }
+        
+        except Exception as e:
+            # Handle other exceptions
+            self.logger.error(f"Error in async workflow execution: {e}")
+            results['status'] = 'error'
+            results['error'] = str(e)
+        
+        return results
+    
+    async def process_async(self, message: Dict[str, Any], timeout: float = 30.0) -> Dict[str, Any]:
+        """
+        Process a message asynchronously with timeout protection.
+        
+        Args:
+            message: Message to process
+            timeout: Timeout in seconds for workflow execution (default: 30.0)
+            
+        Returns:
+            Response from processing the message
+        """
+        if not self.validate_message(message):
+            return self.create_response('error', None, 'Invalid message format')
+            
+        try:
+            message_type = message['type']
+            
+            if message_type == 'workflow':
+                return await self._execute_workflow_async(message['data'], timeout=timeout)
+            else:
+                # For non-workflow messages, run synchronously in executor
+                return await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: self._route_message(message)
+                )
+                
+        except Exception as e:
+            self.logger.error(f"Error processing message asynchronously: {e}")
+            return self.create_response('error', None, str(e))
+    
     def add_routing_rule(self, message_type: str, agent_id: str):
         """
         Add a custom routing rule.
