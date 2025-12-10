@@ -63,7 +63,7 @@
     },
     {
       "parameters": {
-        "functionCode": "const planData = items[0].json.planData;\nconst riskData = items[0].json.riskData;\n\nreturn [{\n  json: {\n    project: planData.data.project_name,\n    plan: planData.data,\n    risks: riskData.data,\n    status: 'initialized',\n    timestamp: new Date().toISOString()\n  }\n}];"
+        "functionCode": "// Merge plan and risk data from previous steps\nconst items = $input.all();\nconst planData = items[0].json;\nconst riskData = items[1].json;\n\nreturn [{\n  json: {\n    project: planData.data.project_name,\n    plan: planData.data,\n    risks: riskData.data,\n    status: 'initialized',\n    timestamp: new Date().toISOString()\n  }\n}];"
       },
       "id": "function-3",
       "name": "Combine Results",

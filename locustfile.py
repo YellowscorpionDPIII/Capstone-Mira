@@ -69,11 +69,21 @@ class MiraUser(HttpUser):
     @task(4)
     def assess_risks(self):
         """Assess project risks - Medium-high frequency task."""
+        # Randomize project descriptions for more realistic testing
+        descriptions = [
+            "Project with tight deadline and new technology",
+            "Complex integration with multiple external dependencies",
+            "Limited resources and aggressive schedule",
+            "High-priority initiative with executive visibility",
+            "Experimental technology with learning curve",
+            "Cross-functional team coordination required"
+        ]
+        
         payload = {
             "type": "assess_risks",
             "data": {
                 "name": f"Risk-Assessment-{random.randint(1000, 9999)}",
-                "description": "Project with tight deadline and new technology",
+                "description": random.choice(descriptions),
                 "tasks": [f"Task {i}" for i in range(random.randint(10, 30))],
                 "duration_weeks": random.randint(8, 16)
             }
@@ -160,9 +170,28 @@ class HighVolumeUser(HttpUser):
     @task(10)
     def rapid_fire_requests(self):
         """Rapid API requests simulating high revenue traffic."""
+        # Randomize project names and data for more realistic testing
+        project_names = ["QuickPlan", "FastTrack", "RapidDeploy", "ExpressProject", "SpeedRun"]
+        risk_names = ["QuickRisk", "FastAssess", "RapidCheck", "SpeedAnalysis", "ExpressRisk"]
+        
         endpoints = [
-            ("/api/message", {"type": "generate_plan", "data": {"name": "QuickPlan", "goals": ["Goal1"], "duration_weeks": 4}}),
-            ("/api/message", {"type": "assess_risks", "data": {"name": "QuickRisk", "description": "test", "tasks": [], "duration_weeks": 4}}),
+            ("/api/message", {
+                "type": "generate_plan", 
+                "data": {
+                    "name": f"{random.choice(project_names)}-{random.randint(100, 999)}", 
+                    "goals": [f"Goal{i}" for i in range(random.randint(1, 3))], 
+                    "duration_weeks": random.choice([4, 8, 12])
+                }
+            }),
+            ("/api/message", {
+                "type": "assess_risks", 
+                "data": {
+                    "name": f"{random.choice(risk_names)}-{random.randint(100, 999)}", 
+                    "description": random.choice(["urgent", "critical", "high-priority"]), 
+                    "tasks": [f"T{i}" for i in range(random.randint(5, 15))], 
+                    "duration_weeks": random.choice([4, 8])
+                }
+            }),
             ("/health", None)
         ]
         
