@@ -8,13 +8,21 @@ class AirtableIntegration(BaseIntegration):
     Integration adapter for Airtable.
     
     Syncs project data, tasks, and reports with Airtable bases.
+    Enhanced with metrics and observability.
     """
     
-    def __init__(self, config: Dict[str, Any] = None):
-        """Initialize Airtable integration."""
+    def __init__(self, config: Dict[str, Any] = None, metrics_collector=None):
+        """
+        Initialize Airtable integration.
+        
+        Args:
+            config: Configuration dictionary
+            metrics_collector: Optional metrics collector instance
+        """
         super().__init__("airtable", config)
         self.api_key = self.config.get('api_key')
         self.base_id = self.config.get('base_id')
+        self.metrics = metrics_collector
         
     def connect(self) -> bool:
         """
@@ -23,13 +31,22 @@ class AirtableIntegration(BaseIntegration):
         Returns:
             True if connection successful
         """
+        if self.metrics:
+            self.metrics.increment('airtable.connection_attempts')
+        
         if not self.validate_config(['api_key', 'base_id']):
             self.logger.error("Missing required Airtable configuration")
+            if self.metrics:
+                self.metrics.increment('airtable.connection_failures', tags={'reason': 'config_missing'})
             return False
             
         # Simulate connection (in production, would make API call)
         self.connected = True
         self.logger.info(f"Connected to Airtable base: {self.base_id}")
+        
+        if self.metrics:
+            self.metrics.increment('airtable.connection_successes')
+        
         return True
         
     def disconnect(self):
@@ -48,15 +65,32 @@ class AirtableIntegration(BaseIntegration):
         Returns:
             Sync result
         """
+        if self.metrics:
+            self.metrics.increment('airtable.sync_attempts', tags={'data_type': data_type})
+        
         if not self.connected:
+            if self.metrics:
+                self.metrics.increment('airtable.sync_failures', tags={'reason': 'not_connected'})
             return {'success': False, 'error': 'Not connected to Airtable'}
+        
+        try:
+            if data_type == 'records':
+                result = self._sync_records(data)
+            elif data_type == 'reports':
+                result = self._sync_reports(data)
+            else:
+                if self.metrics:
+                    self.metrics.increment('airtable.sync_failures', tags={'reason': 'unknown_type'})
+                return {'success': False, 'error': f'Unknown data type: {data_type}'}
             
-        if data_type == 'records':
-            return self._sync_records(data)
-        elif data_type == 'reports':
-            return self._sync_reports(data)
-        else:
-            return {'success': False, 'error': f'Unknown data type: {data_type}'}
+            if result.get('success') and self.metrics:
+                self.metrics.increment('airtable.sync_successes', tags={'data_type': data_type})
+            
+            return result
+        except Exception as e:
+            if self.metrics:
+                self.metrics.increment('airtable.sync_failures', tags={'reason': 'exception'})
+            raise
             
     def _sync_records(self, records: list) -> Dict[str, Any]:
         """

@@ -76,6 +76,16 @@ See [DOCUMENTATION.md](DOCUMENTATION.md) for comprehensive documentation includi
 - Architecture overview
 - Extension guide
 
+### Security & Observability
+
+See [Security & Observability Guide](docs/SECURITY_AND_OBSERVABILITY.md) for:
+- API key management with rotation and expiry
+- Webhook security (IP filtering, shared secrets)
+- Metrics collection and monitoring
+- Health and readiness checks
+- Operational controls and feature flags
+- Developer testing tools
+
 ### Supported Languages
 
 <!-- Badge reflects current translation status from docs/wiki/Localization.md - update counts as languages are completed -->
@@ -92,8 +102,14 @@ Additional documentation is available in our [Wiki](docs/wiki/Home.md):
 # Run all tests
 python -m unittest discover mira/tests
 
-# Run specific test module
+# Run specific test modules
 python -m unittest mira.tests.test_agents
+python -m unittest mira.tests.test_security
+python -m unittest mira.tests.test_observability
+python -m unittest mira.tests.test_config_validation
+
+# Use the local testing harness
+python -m mira.tools.testing_harness --help
 ```
 
 ## 📁 Project Structure
@@ -117,12 +133,24 @@ Capstone-Mira/
 │   │   ├── base_agent.py
 │   │   ├── message_broker.py
 │   │   └── webhook_handler.py
+│   ├── security/              # Security features
+│   │   ├── api_key_manager.py
+│   │   ├── audit_logger.py
+│   │   └── webhook_security.py
+│   ├── observability/         # Observability features
+│   │   ├── metrics.py
+│   │   └── health.py
 │   ├── config/                # Configuration
-│   │   └── settings.py
+│   │   ├── settings.py
+│   │   └── validation.py
 │   ├── utils/                 # Utilities
 │   │   └── logging.py
+│   ├── tools/                 # Developer tools
+│   │   └── testing_harness.py
 │   ├── tests/                 # Test suite
 │   └── app.py                 # Main application
+├── docs/                      # Documentation
+│   └── SECURITY_AND_OBSERVABILITY.md
 ├── examples/                  # Example scripts
 │   └── example_usage.py
 ├── requirements.txt
