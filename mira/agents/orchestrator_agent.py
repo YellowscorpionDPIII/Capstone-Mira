@@ -5,6 +5,26 @@ from mira.core.message_broker import get_broker
 from config import config
 import asyncio
 import logging
+import time
+from prometheus_client import Counter, Histogram, Gauge
+
+# Prometheus metrics
+async_timeout_fallbacks_total = Counter(
+    'async_timeout_fallbacks_total',
+    'Total number of async timeout fallbacks',
+    ['agent_type']
+)
+
+agent_process_duration_seconds = Histogram(
+    'agent_process_duration_seconds',
+    'Agent processing duration in seconds',
+    ['agent_type', 'fallback_mode']
+)
+
+current_concurrent_agents = Gauge(
+    'current_concurrent_agents',
+    'Current number of agents processing requests concurrently'
+)
 
 
 async def call_llm(prompt: str, model: str = None):
@@ -113,11 +133,73 @@ class OrchestratorAgent(BaseAgent):
         if not target_agent:
             return self.create_response('error', None, f'Agent not found: {target_agent_id}')
             
-        # Route message to target agent
+        # Route message to target agent with timeout and metrics tracking
         self.logger.info(f"Routing {message_type} to {target_agent_id}")
-        response = target_agent.process(message)
         
-        return response
+        # Increment concurrent agents gauge
+        current_concurrent_agents.inc()
+        
+        try:
+            # Determine agent type for metrics
+            agent_type = self._get_agent_type(target_agent_id)
+            
+            # Try async processing with timeout first
+            timeout_seconds = self.config.get('agent_timeout', 30)
+            fallback_mode = 'async'
+            
+            try:
+                start_time = time.time()
+                
+                # Attempt async processing with timeout
+                loop = asyncio.get_event_loop()
+                response = asyncio.wait_for(
+                    loop.run_in_executor(None, target_agent.process, message),
+                    timeout=timeout_seconds
+                )
+                
+                # If we get here, async succeeded
+                try:
+                    response = loop.run_until_complete(response)
+                except RuntimeError:
+                    # No event loop running, use sync fallback
+                    raise asyncio.TimeoutError("No event loop")
+                
+                duration = time.time() - start_time
+                agent_process_duration_seconds.labels(
+                    agent_type=agent_type,
+                    fallback_mode=fallback_mode
+                ).observe(duration)
+                
+            except (asyncio.TimeoutError, RuntimeError):
+                # Timeout occurred, fallback to sync processing
+                self.logger.warning(f"Async timeout for {agent_type}, falling back to sync")
+                async_timeout_fallbacks_total.labels(agent_type=agent_type).inc()
+                
+                fallback_mode = 'sync'
+                start_time = time.time()
+                
+                try:
+                    response = target_agent.process(message)
+                    duration = time.time() - start_time
+                    agent_process_duration_seconds.labels(
+                        agent_type=agent_type,
+                        fallback_mode=fallback_mode
+                    ).observe(duration)
+                except Exception as e:
+                    # Error during sync processing
+                    duration = time.time() - start_time
+                    fallback_mode = 'error'
+                    agent_process_duration_seconds.labels(
+                        agent_type=agent_type,
+                        fallback_mode=fallback_mode
+                    ).observe(duration)
+                    raise e
+            
+            return response
+            
+        finally:
+            # Decrement concurrent agents gauge
+            current_concurrent_agents.dec()
         
     def _execute_workflow(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -189,3 +271,22 @@ class OrchestratorAgent(BaseAgent):
         """
         self.routing_rules[message_type] = agent_id
         self.logger.info(f"Added routing rule: {message_type} -> {agent_id}")
+    
+    def _get_agent_type(self, agent_id: str) -> str:
+        """
+        Extract agent type from agent_id for metrics labeling.
+        
+        Args:
+            agent_id: The agent identifier
+            
+        Returns:
+            Agent type string for metrics
+        """
+        # Map common agent IDs to metric-friendly names
+        agent_type_mapping = {
+            'project_plan_agent': 'plan_generator',
+            'risk_assessment_agent': 'risk_assessor',
+            'status_reporter_agent': 'status_reporter',
+            'roadmapping_agent': 'roadmapper'
+        }
+        return agent_type_mapping.get(agent_id, agent_id)
