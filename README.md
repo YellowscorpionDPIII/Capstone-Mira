@@ -2,6 +2,7 @@
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Security Policy](https://img.shields.io/badge/security-policy-blue.svg)](SECURITY.md)
 
 Modular multi-agent AI workflow system for technical program management. Automates planning, risk assessment, status reporting, and connects with Trello, Jira, GitHub, Airtable, Google Docs, and PDFs for seamless collaboration.
 
@@ -136,6 +137,7 @@ Capstone-Mira/
 Contributions are welcome! Please feel free to submit a Pull Request.
 
 - **Translations**: Help make Mira available in more languages - see our [Localization Guide](docs/wiki/Localization.md)
+- **Security**: Report security vulnerabilities responsibly - see our [Security Policy](SECURITY.md)
 
 ## 📄 License
 
