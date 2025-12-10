@@ -653,6 +653,99 @@ class TestOrchestratorAgent(unittest.TestCase):
         # Should return empty steps for unknown workflow type
         self.assertEqual(response['workflow_type'], 'unknown_workflow')
         self.assertEqual(len(response['steps']), 0)
+    
+    def test_metrics_concurrent_agents_gauge(self):
+        """Test that concurrent agents gauge is properly incremented and decremented."""
+        from mira.agents.orchestrator_agent import current_concurrent_agents
+        
+        # Get initial value
+        initial_value = current_concurrent_agents._value._value
+        
+        # Process a message
+        message = {
+            'type': 'generate_plan',
+            'data': {
+                'name': 'Test Project',
+                'goals': ['Goal 1'],
+                'duration_weeks': 8
+            }
+        }
+        
+        response = self.orchestrator.process(message)
+        self.assertEqual(response['status'], 'success')
+        
+        # After processing, gauge should return to initial value
+        final_value = current_concurrent_agents._value._value
+        self.assertEqual(initial_value, final_value)
+    
+    def test_metrics_agent_process_duration_recorded(self):
+        """Test that agent process duration is recorded in histogram."""
+        from mira.agents.orchestrator_agent import agent_process_duration_seconds
+        
+        # Get initial sample count for 'plan_generator' agent type with 'sync' fallback_mode
+        initial_samples = 0
+        try:
+            initial_samples = agent_process_duration_seconds.labels(
+                agent_type='plan_generator',
+                fallback_mode='sync'
+            )._sum._value
+        except:
+            initial_samples = 0
+        
+        # Process a message
+        message = {
+            'type': 'generate_plan',
+            'data': {
+                'name': 'Test Project',
+                'goals': ['Goal 1'],
+                'duration_weeks': 8
+            }
+        }
+        
+        response = self.orchestrator.process(message)
+        self.assertEqual(response['status'], 'success')
+        
+        # Check that duration was recorded
+        final_samples = agent_process_duration_seconds.labels(
+            agent_type='plan_generator',
+            fallback_mode='sync'
+        )._sum._value
+        
+        # Duration should have increased
+        self.assertGreater(final_samples, initial_samples)
+    
+    def test_metrics_get_agent_type_mapping(self):
+        """Test agent type mapping for metrics."""
+        self.assertEqual(
+            self.orchestrator._get_agent_type('project_plan_agent'),
+            'plan_generator'
+        )
+        self.assertEqual(
+            self.orchestrator._get_agent_type('risk_assessment_agent'),
+            'risk_assessor'
+        )
+        self.assertEqual(
+            self.orchestrator._get_agent_type('status_reporter_agent'),
+            'status_reporter'
+        )
+        self.assertEqual(
+            self.orchestrator._get_agent_type('roadmapping_agent'),
+            'roadmapper'
+        )
+        # Unknown agent ID should return the ID itself
+        self.assertEqual(
+            self.orchestrator._get_agent_type('unknown_agent'),
+            'unknown_agent'
+        )
+    
+    def test_metrics_timeout_config(self):
+        """Test that agent timeout can be configured."""
+        config = {'agent_timeout': 60}
+        orchestrator = OrchestratorAgent(agent_id='timeout_orchestrator', config=config)
+        orchestrator.register_agent(ProjectPlanAgent())
+        
+        # The timeout value should be used in _route_message
+        self.assertEqual(orchestrator.config.get('agent_timeout'), 60)
 
 
 # ============================================================================
