@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional
 from datetime import datetime
 import logging
+from mira.utils.metrics import get_metrics_collector
 
 
 class BaseAgent(ABC):
@@ -24,11 +25,15 @@ class BaseAgent(ABC):
         self.config = config or {}
         self.logger = logging.getLogger(f"mira.agent.{agent_id}")
         self.created_at = datetime.utcnow()
+        self.metrics = get_metrics_collector()
         
     @abstractmethod
     def process(self, message: Dict[str, Any]) -> Dict[str, Any]:
         """
         Process an incoming message and return a response.
+        
+        This method is automatically instrumented with latency tracking and error counting.
+        Subclasses should implement _process_impl() instead of this method directly.
         
         Args:
             message: Message dictionary containing type, data, and metadata
@@ -37,6 +42,35 @@ class BaseAgent(ABC):
             Response dictionary with processing results
         """
         pass
+    
+    def process_with_metrics(self, message: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Wrap process() with metrics collection.
+        
+        This method should be called instead of process() directly to ensure
+        metrics are collected. It handles both latency tracking and error counting.
+        
+        Args:
+            message: Message dictionary containing type, data, and metadata
+            
+        Returns:
+            Response dictionary with processing results
+        """
+        metric_name = f"agent.{self.agent_id}.process"
+        
+        try:
+            with self.metrics.timer(metric_name):
+                result = self.process(message)
+                
+            # Track errors in the response
+            if result.get('status') == 'error':
+                self.metrics.increment_error_counter(f"agent.{self.agent_id}.errors")
+                
+            return result
+        except Exception as e:
+            self.metrics.increment_error_counter(f"agent.{self.agent_id}.errors")
+            self.logger.error(f"Error processing message: {e}")
+            raise
     
     def validate_message(self, message: Dict[str, Any]) -> bool:
         """

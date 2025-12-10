@@ -8,6 +8,7 @@ from mira.agents.status_reporter_agent import StatusReporterAgent
 from mira.agents.orchestrator_agent import OrchestratorAgent
 from mira.config.settings import get_config
 from mira.utils.logging import setup_logging
+from mira.utils.metrics import get_metrics_collector
 
 
 class MiraApplication:
@@ -33,6 +34,9 @@ class MiraApplication:
         
         # Initialize message broker
         self.broker = get_broker()
+        
+        # Initialize metrics collector
+        self.metrics = get_metrics_collector()
         
         # Initialize agents
         self.agents = {}
@@ -77,18 +81,33 @@ class MiraApplication:
         
     def _handle_github_webhook(self, data: dict) -> dict:
         """Handle GitHub webhook events."""
-        # Process GitHub events and route to appropriate agents
-        return {'status': 'processed', 'service': 'github'}
+        try:
+            with self.metrics.timer('webhook.github'):
+                # Process GitHub events and route to appropriate agents
+                return {'status': 'processed', 'service': 'github'}
+        except Exception as e:
+            self.metrics.increment_error_counter('webhook.github.errors')
+            raise
         
     def _handle_trello_webhook(self, data: dict) -> dict:
         """Handle Trello webhook events."""
-        # Process Trello events and route to appropriate agents
-        return {'status': 'processed', 'service': 'trello'}
+        try:
+            with self.metrics.timer('webhook.trello'):
+                # Process Trello events and route to appropriate agents
+                return {'status': 'processed', 'service': 'trello'}
+        except Exception as e:
+            self.metrics.increment_error_counter('webhook.trello.errors')
+            raise
         
     def _handle_jira_webhook(self, data: dict) -> dict:
         """Handle Jira webhook events."""
-        # Process Jira events and route to appropriate agents
-        return {'status': 'processed', 'service': 'jira'}
+        try:
+            with self.metrics.timer('webhook.jira'):
+                # Process Jira events and route to appropriate agents
+                return {'status': 'processed', 'service': 'jira'}
+        except Exception as e:
+            self.metrics.increment_error_counter('webhook.jira.errors')
+            raise
         
     def start(self):
         """Start the Mira application."""
@@ -117,7 +136,12 @@ class MiraApplication:
         Returns:
             Processing result
         """
-        return self.orchestrator.process(message)
+        try:
+            with self.metrics.timer('app.process_message'):
+                return self.orchestrator.process(message)
+        except Exception as e:
+            self.metrics.increment_error_counter('app.process_errors')
+            raise
 
 
 def main():
