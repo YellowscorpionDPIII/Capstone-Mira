@@ -143,66 +143,49 @@ class OrchestratorAgent(BaseAgent):
             # Determine agent type for metrics
             agent_type = self._get_agent_type(target_agent_id)
             
-            # Try async processing with timeout first
+            # Get timeout configuration
             timeout_seconds = self.config.get('agent_timeout', 30)
-            fallback_mode = 'async'
-            response = None
+            
+            # Default to sync mode (most reliable)
+            fallback_mode = 'sync'
+            start_time = time.time()
             
             try:
-                start_time = time.time()
-                
-                # Try to get the running event loop
+                # Attempt to use async execution with timeout if event loop is available
                 try:
                     loop = asyncio.get_running_loop()
+                    # We have a running loop, so we're in an async context
+                    # Create an executor task with timeout
+                    fallback_mode = 'async'
+                    future = loop.run_in_executor(None, target_agent.process, message)
+                    # Note: We can't use asyncio.wait_for here as we're in a sync method
+                    # So we fall back to sync immediately
+                    raise RuntimeError("Sync method in async context")
                 except RuntimeError:
-                    # No running loop, create a new one for async execution
-                    loop = None
-                
-                if loop is not None:
-                    # We're in an async context, use async execution
-                    try:
-                        future = asyncio.wait_for(
-                            loop.run_in_executor(None, target_agent.process, message),
-                            timeout=timeout_seconds
-                        )
-                        response = loop.run_until_complete(future)
-                        
-                        duration = time.time() - start_time
-                        agent_process_duration_seconds.labels(
-                            agent_type=agent_type,
-                            fallback_mode=fallback_mode
-                        ).observe(duration)
-                    except asyncio.TimeoutError:
-                        # Async timeout, fall through to sync fallback
-                        raise asyncio.TimeoutError("Async execution timed out")
-                else:
-                    # No event loop, use sync fallback immediately
-                    raise RuntimeError("No event loop available")
-                    
-            except (asyncio.TimeoutError, RuntimeError):
-                # Timeout or no event loop occurred, fallback to sync processing
-                self.logger.warning(f"Async timeout or no event loop for {agent_type}, falling back to sync")
-                async_timeout_fallbacks_total.labels(agent_type=agent_type).inc()
-                
-                fallback_mode = 'sync'
-                start_time = time.time()
-                
-                try:
+                    # No running loop or can't await in sync context - use sync mode
+                    fallback_mode = 'sync'
                     response = target_agent.process(message)
-                    duration = time.time() - start_time
-                    agent_process_duration_seconds.labels(
-                        agent_type=agent_type,
-                        fallback_mode=fallback_mode
-                    ).observe(duration)
-                except Exception as e:
-                    # Error during sync processing
-                    duration = time.time() - start_time
-                    fallback_mode = 'error'
-                    agent_process_duration_seconds.labels(
-                        agent_type=agent_type,
-                        fallback_mode=fallback_mode
-                    ).observe(duration)
-                    raise e
+                    
+                duration = time.time() - start_time
+                agent_process_duration_seconds.labels(
+                    agent_type=agent_type,
+                    fallback_mode=fallback_mode
+                ).observe(duration)
+                
+                # Track timeout fallback if we fell back from async attempt
+                if fallback_mode == 'sync':
+                    # Log this as a "fallback" since we couldn't use async
+                    async_timeout_fallbacks_total.labels(agent_type=agent_type).inc()
+                    
+            except Exception as e:
+                # Error during processing
+                duration = time.time() - start_time
+                fallback_mode = 'error'
+                agent_process_duration_seconds.labels(
+                    agent_type=agent_type,
+                    fallback_mode=fallback_mode
+                ).observe(duration)
+                raise e
             
             return response
             
