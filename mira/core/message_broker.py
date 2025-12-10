@@ -5,6 +5,7 @@ import logging
 from datetime import datetime
 import queue
 import threading
+from mira.utils.metrics import get_metrics_collector
 
 
 class MessageBroker:
@@ -21,6 +22,7 @@ class MessageBroker:
         self.logger = logging.getLogger("mira.broker")
         self.running = False
         self.worker_thread = None
+        self.metrics = get_metrics_collector()
         
     def subscribe(self, message_type: str, handler: Callable[[Dict[str, Any]], None]):
         """
@@ -53,13 +55,14 @@ class MessageBroker:
             message_type: Type of message being published
             data: Message data
         """
-        message = {
-            'type': message_type,
-            'data': data,
-            'timestamp': datetime.utcnow().isoformat()
-        }
-        self.message_queue.put(message)
-        self.logger.info(f"Message published: {message_type}")
+        with self.metrics.timer('broker.publish'):
+            message = {
+                'type': message_type,
+                'data': data,
+                'timestamp': datetime.utcnow().isoformat()
+            }
+            self.message_queue.put(message)
+            self.logger.info(f"Message published: {message_type}")
         
     def _process_messages(self):
         """Process messages from the queue (runs in separate thread)."""
@@ -68,17 +71,20 @@ class MessageBroker:
                 message = self.message_queue.get(timeout=1)
                 message_type = message['type']
                 
-                if message_type in self.subscribers:
-                    for handler in self.subscribers[message_type]:
-                        try:
-                            handler(message)
-                        except Exception as e:
-                            self.logger.error(f"Error in handler for {message_type}: {e}")
-                            
+                with self.metrics.timer('broker.process_message'):
+                    if message_type in self.subscribers:
+                        for handler in self.subscribers[message_type]:
+                            try:
+                                handler(message)
+                            except Exception as e:
+                                self.metrics.increment_error_counter('broker.handler_errors')
+                                self.logger.error(f"Error in handler for {message_type}: {e}")
+                                
                 self.message_queue.task_done()
             except queue.Empty:
                 continue
             except Exception as e:
+                self.metrics.increment_error_counter('broker.process_errors')
                 self.logger.error(f"Error processing message: {e}")
                 
     def start(self):
