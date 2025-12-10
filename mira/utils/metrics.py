@@ -167,13 +167,14 @@ class MetricsCollector:
             Decorated function
         """
         def decorator(func: Callable) -> Callable:
-            nonlocal metric_name
-            if metric_name is None:
-                metric_name = f"{func.__module__}.{func.__name__}"
+            # Determine metric name at decoration time
+            final_metric_name = metric_name
+            if final_metric_name is None:
+                final_metric_name = f"{func.__module__}.{func.__name__}"
                 
             @wraps(func)
             def wrapper(*args, **kwargs):
-                with self.timer(metric_name):
+                with self.timer(final_metric_name):
                     return func(*args, **kwargs)
                     
             return wrapper

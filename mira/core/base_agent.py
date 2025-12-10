@@ -32,8 +32,9 @@ class BaseAgent(ABC):
         """
         Process an incoming message and return a response.
         
-        This method is automatically instrumented with latency tracking and error counting.
-        Subclasses should implement _process_impl() instead of this method directly.
+        Subclasses must implement this method to define their processing logic.
+        To enable automatic metrics collection, use the process_with_metrics()
+        wrapper method instead of calling this directly.
         
         Args:
             message: Message dictionary containing type, data, and metadata

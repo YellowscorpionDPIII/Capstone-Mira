@@ -2,7 +2,6 @@
 from typing import Dict, Any, Optional
 from mira.core.base_agent import BaseAgent
 from mira.core.message_broker import get_broker
-from mira.utils.metrics import get_metrics_collector
 from config import config
 import asyncio
 import logging
