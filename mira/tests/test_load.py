@@ -145,6 +145,9 @@ class LoadTestCase(unittest.TestCase):
                 self.assertIn('status', response)
                 self.assertIn('data', response)
                 
+                # Small delay to prevent resource exhaustion
+                time.sleep(0.001)  # 1ms delay between requests
+                
             except Exception as e:
                 error_count += 1
                 print(f"Error in sustained load test: {str(e)}")

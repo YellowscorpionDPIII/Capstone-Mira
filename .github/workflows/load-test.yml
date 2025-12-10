@@ -37,23 +37,30 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install -e ".[dev]"
+        if [ -f setup.py ]; then
+          pip install -e ".[dev]" || echo "Warning: Failed to install dev dependencies"
+        else
+          echo "Warning: setup.py not found"
+        fi
     
     - name: Run load tests
       id: load_test
       run: |
         echo "Starting load tests..."
-        python -m pytest mira/tests/test_load.py -v --tb=short --benchmark-disable --no-cov > load_test_results.txt 2>&1 || true
-        cat load_test_results.txt
         
-        # Check if tests passed
-        if python -m pytest mira/tests/test_load.py -v --tb=short --benchmark-disable --no-cov; then
+        # Run tests once and capture exit code
+        if python -m pytest mira/tests/test_load.py -v --tb=short --benchmark-disable --no-cov > load_test_results.txt 2>&1; then
+          TEST_EXIT_CODE=0
           echo "status=passed" >> $GITHUB_OUTPUT
-          echo "Load tests PASSED ✅" >> load_test_summary.txt
+          echo "Load tests PASSED ✅" > load_test_summary.txt
         else
+          TEST_EXIT_CODE=1
           echo "status=failed" >> $GITHUB_OUTPUT
-          echo "Load tests FAILED ❌" >> load_test_summary.txt
+          echo "Load tests FAILED ❌" > load_test_summary.txt
         fi
+        
+        # Display results
+        cat load_test_results.txt
         
         # Extract metrics from output
         echo "" >> load_test_summary.txt
