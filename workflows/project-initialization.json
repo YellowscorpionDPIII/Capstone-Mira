@@ -1,0 +1,114 @@
+{
+  "name": "Mira Project Initialization Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "project-init",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-1",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": "mira-project-init"
+    },
+    {
+      "parameters": {
+        "functionCode": "const projectData = items[0].json.body;\n\nreturn [{\n  json: {\n    type: 'generate_plan',\n    data: {\n      name: projectData.name,\n      goals: projectData.goals,\n      duration_weeks: projectData.duration_weeks\n    }\n  }\n}];"
+      },
+      "id": "function-1",
+      "name": "Prepare Plan Request",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:5000/api/message",
+        "method": "POST",
+        "jsonParameters": true,
+        "options": {}
+      },
+      "id": "http-1",
+      "name": "Generate Project Plan",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const planData = items[0].json;\n\nreturn [{\n  json: {\n    type: 'assess_risks',\n    data: {\n      name: planData.data.project_name,\n      description: planData.data.description,\n      tasks: planData.data.tasks || [],\n      duration_weeks: planData.data.duration_weeks\n    }\n  }\n}];"
+      },
+      "id": "function-2",
+      "name": "Prepare Risk Assessment",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://localhost:5000/api/message",
+        "method": "POST",
+        "jsonParameters": true,
+        "options": {}
+      },
+      "id": "http-2",
+      "name": "Assess Risks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 3,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const planData = items[0].json.planData;\nconst riskData = items[0].json.riskData;\n\nreturn [{\n  json: {\n    project: planData.data.project_name,\n    plan: planData.data,\n    risks: riskData.data,\n    status: 'initialized',\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "function-3",
+      "name": "Combine Results",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "respond-1",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1450, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{"node": "Prepare Plan Request", "type": "main", "index": 0}]]
+    },
+    "Prepare Plan Request": {
+      "main": [[{"node": "Generate Project Plan", "type": "main", "index": 0}]]
+    },
+    "Generate Project Plan": {
+      "main": [[{"node": "Prepare Risk Assessment", "type": "main", "index": 0}]]
+    },
+    "Prepare Risk Assessment": {
+      "main": [[{"node": "Assess Risks", "type": "main", "index": 0}]]
+    },
+    "Assess Risks": {
+      "main": [[{"node": "Combine Results", "type": "main", "index": 0}]]
+    },
+    "Combine Results": {
+      "main": [[{"node": "Respond to Webhook", "type": "main", "index": 0}]]
+    }
+  },
+  "active": false,
+  "settings": {},
+  "versionId": "1",
+  "meta": {
+    "instanceId": "mira-instance"
+  },
+  "id": "1",
+  "tags": []
+}

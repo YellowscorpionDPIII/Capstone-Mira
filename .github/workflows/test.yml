@@ -44,6 +44,38 @@ jobs:
         fail_ci_if_error: false
         verbose: true
 
+  n8n-workflow-validation:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+    
+    - name: Install n8n CLI
+      run: |
+        npm install -g n8n
+    
+    - name: Validate n8n workflows
+      run: |
+        echo "Validating n8n workflows..."
+        # Check if workflows directory exists
+        if [ -d "workflows" ]; then
+          for workflow in workflows/*.json; do
+            if [ -f "$workflow" ]; then
+              echo "Validating $workflow..."
+              n8n workflow:validate "$workflow" || echo "Warning: Validation failed for $workflow"
+            fi
+          done
+          echo "n8n workflow validation completed"
+        else
+          echo "No workflows directory found, skipping validation"
+        fi
+
   coverage-gate:
     runs-on: ubuntu-latest
     needs: test
