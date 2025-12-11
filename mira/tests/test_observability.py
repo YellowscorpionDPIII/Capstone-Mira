@@ -239,12 +239,13 @@ class TestMetricsInErrorScenarios(unittest.TestCase):
         """Test metrics captured in try-finally blocks."""
         counter = self.collector.counter('operations_total')
         
-        try:
-            counter.inc()
-            raise Exception("Test error")
-        finally:
-            # Ensure metric was captured even with exception
-            self.assertEqual(counter.value, 1.0)
+        with self.assertRaises(Exception):
+            try:
+                counter.inc()
+                raise Exception("Test error")
+            finally:
+                # Ensure metric was captured even with exception
+                self.assertEqual(counter.value, 1.0)
     
     def test_timer_in_error_scenario(self):
         """Test timer captures duration even when exception occurs."""

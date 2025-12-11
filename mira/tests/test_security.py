@@ -91,7 +91,13 @@ class TestAPIKeyManager(unittest.TestCase):
     
     def test_expired_key(self):
         """Test validating an expired key."""
-        api_key, record = self.manager.create(expires_in_days=-1)
+        # Create a key that expired recently (within grace period)
+        api_key, record = self.manager.create(expires_in_days=0, grace_period_seconds=86400)
+        
+        # Manually set expiry to 1 hour ago (within 24 hour grace period)
+        from datetime import datetime, timedelta
+        record.expires_at = datetime.utcnow() - timedelta(hours=1)
+        self.storage.save(record.key_id, record)
         
         is_valid, _, status = self.manager.validate(api_key)
         

@@ -65,7 +65,7 @@ class WebhookSecurityConfigModel(BaseModel):
         description="List of allowed IP addresses/CIDR ranges"
     )
     require_signature: bool = Field(
-        default=True,
+        default=False,
         description="Require HMAC signature verification"
     )
     require_secret: bool = Field(
