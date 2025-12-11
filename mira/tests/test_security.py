@@ -333,6 +333,82 @@ class TestWebhookSecurity(unittest.TestCase):
                 allowed_ips=["invalid_ip"],
                 require_ip_whitelist=True
             )
+    
+    def test_timestamp_validation_valid(self):
+        """Test timestamp validation with valid recent timestamp."""
+        config = WebhookSecurityConfig(require_signature=False, require_ip_whitelist=False)
+        authenticator = WebhookAuthenticator(config, timestamp_window_seconds=300)
+        
+        # Create a recent timestamp (within window)
+        recent_timestamp = datetime.utcnow().isoformat()
+        
+        is_valid = authenticator.validate_signature_timestamp(recent_timestamp)
+        self.assertTrue(is_valid)
+    
+    def test_timestamp_validation_expired(self):
+        """Test timestamp validation with expired timestamp."""
+        config = WebhookSecurityConfig(require_signature=False, require_ip_whitelist=False)
+        authenticator = WebhookAuthenticator(config, timestamp_window_seconds=300)
+        
+        # Create an old timestamp (beyond window)
+        old_timestamp = (datetime.utcnow() - timedelta(seconds=400)).isoformat()
+        
+        is_valid = authenticator.validate_signature_timestamp(old_timestamp)
+        self.assertFalse(is_valid)
+    
+    def test_timestamp_validation_malformed(self):
+        """Test timestamp validation with malformed timestamp."""
+        config = WebhookSecurityConfig(require_signature=False, require_ip_whitelist=False)
+        authenticator = WebhookAuthenticator(config, timestamp_window_seconds=300)
+        
+        is_valid = authenticator.validate_signature_timestamp("not-a-timestamp")
+        self.assertFalse(is_valid)
+    
+    def test_timestamp_validation_future(self):
+        """Test timestamp validation with future timestamp."""
+        config = WebhookSecurityConfig(require_signature=False, require_ip_whitelist=False)
+        authenticator = WebhookAuthenticator(config, timestamp_window_seconds=300)
+        
+        # Create a future timestamp
+        future_timestamp = (datetime.utcnow() + timedelta(seconds=100)).isoformat()
+        
+        is_valid = authenticator.validate_signature_timestamp(future_timestamp)
+        self.assertFalse(is_valid)
+    
+    def test_authenticate_with_valid_timestamp(self):
+        """Test authentication with valid timestamp header."""
+        config = WebhookSecurityConfig(
+            require_signature=False,
+            require_ip_whitelist=False
+        )
+        authenticator = WebhookAuthenticator(config, timestamp_window_seconds=300)
+        
+        recent_timestamp = datetime.utcnow().isoformat()
+        
+        is_auth, reason = authenticator.authenticate(
+            client_ip="127.0.0.1",
+            payload=b"test",
+            timestamp_header=recent_timestamp
+        )
+        self.assertTrue(is_auth)
+    
+    def test_authenticate_with_expired_timestamp(self):
+        """Test authentication rejects expired timestamp."""
+        config = WebhookSecurityConfig(
+            require_signature=False,
+            require_ip_whitelist=False
+        )
+        authenticator = WebhookAuthenticator(config, timestamp_window_seconds=300)
+        
+        old_timestamp = (datetime.utcnow() - timedelta(seconds=400)).isoformat()
+        
+        is_auth, reason = authenticator.authenticate(
+            client_ip="127.0.0.1",
+            payload=b"test",
+            timestamp_header=old_timestamp
+        )
+        self.assertFalse(is_auth)
+        self.assertEqual(reason, AuthFailureReason.AUTH_SIGNATURE_INVALID)
 
 
 if __name__ == '__main__':
