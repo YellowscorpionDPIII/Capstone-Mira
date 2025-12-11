@@ -28,12 +28,23 @@ setup(
     python_requires='>=3.8',
     install_requires=[
         'Flask>=3.0.0',
+        'watchdog>=3.0.0',
     ],
     extras_require={
         'dev': [
             'pytest>=7.0.0',
             'pytest-cov>=4.0.0',
             'pytest-benchmark>=4.0.0',
+        ],
+        'vault': [
+            'hvac>=1.0.0',
+        ],
+        'kubernetes': [
+            'kubernetes>=28.0.0',
+        ],
+        'secrets': [
+            'hvac>=1.0.0',
+            'kubernetes>=28.0.0',
         ],
     },
     entry_points={
