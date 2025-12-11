@@ -620,7 +620,7 @@ async def route_governance_request(request):
 
 - **LangChain Documentation**: https://python.langchain.com/docs/
 - **Prompt Engineering Guide**: https://www.promptingguide.ai/
-- **Governance Patterns**: See `governance/` directory for implementation examples
+- **Governance Patterns**: See `governance/risk_assessor.py` and `governance/hitl_handler.py` for implementation examples
 
 ## Contributing
 

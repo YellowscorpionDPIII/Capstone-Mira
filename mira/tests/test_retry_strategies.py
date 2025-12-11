@@ -1,12 +1,19 @@
 """
 Unit tests for retry strategies in distributed systems.
 
-Tests cover:
+These tests validate retry patterns and resilience mechanisms that should be
+implemented in the orchestrator and agent classes. The tests demonstrate
+expected behavior for:
 - Exponential backoff retry mechanism
 - Circuit breaker pattern
 - Timeout and fallback scenarios
 - Distributed system failure recovery
 - Network resilience patterns
+
+Note: These tests use mock implementations to demonstrate the patterns.
+Production code should implement these patterns in the actual agent classes,
+particularly in orchestrator_agent.py for handling timeout fallbacks and
+retry logic in distributed workflows.
 """
 import unittest
 from unittest.mock import patch, MagicMock, call

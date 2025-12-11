@@ -1,12 +1,22 @@
 """
 Integration tests for Google Cloud Dashboard connectivity and data validation.
 
+These tests validate the scaling dashboard agent functionality using mock
+implementations for external dependencies (Jira, GitHub connectors).
+
 Tests cover:
 - Scaling dashboard connectivity
 - Google Cloud metrics collection
 - Data accuracy validation
 - Dashboard agent functionality
 - Integration with cloud monitoring services
+
+Note: The mock implementations mirror the expected behavior of the production
+ScalingDashboardAgent (located in `mira/agents/scaling_dashboard_agent.py`).
+When the production implementation is updated, these tests should be reviewed
+to ensure they accurately reflect the actual behavior. For true integration
+testing with real Google Cloud services, additional end-to-end tests should
+be created with proper service account credentials.
 """
 import unittest
 from unittest.mock import patch, MagicMock, AsyncMock
