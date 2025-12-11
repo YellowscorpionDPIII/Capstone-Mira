@@ -123,6 +123,34 @@ class HealthCheck:
             'graceful_startup': in_graceful_startup
         }
     
+    def _parse_metric_tags(self, metric_name: str) -> tuple[str, str]:
+        """
+        Parse metric name and tags into Prometheus format.
+        
+        Args:
+            metric_name: Metric name with optional tags (e.g., "metric:key=value,key2=value2")
+            
+        Returns:
+            Tuple of (base_name, label_str) for Prometheus format
+        """
+        if ':' not in metric_name:
+            return metric_name, ''
+        
+        base_name, tags_str = metric_name.split(':', 1)
+        labels = []
+        
+        # Parse tags with error handling
+        for tag in tags_str.split(','):
+            if '=' in tag:
+                k, v = tag.split('=', 1)  # Use maxsplit=1 to handle values with '='
+                labels.append(f'{k}="{v}"')
+            else:
+                # Malformed tag, skip it
+                self.logger.warning(f"Malformed tag in metric {metric_name}: {tag}")
+        
+        label_str = '{' + ','.join(labels) + '}' if labels else ''
+        return base_name, label_str
+    
     def get_metrics_prometheus(self) -> str:
         """
         Get metrics in Prometheus exposition format.
@@ -143,20 +171,7 @@ class HealthCheck:
         
         # Export counters
         for metric_name, value in all_metrics.get('counters', {}).items():
-            # Parse metric name and tags
-            if ':' in metric_name:
-                base_name, tags_str = metric_name.split(':', 1)
-                # Convert tags to Prometheus labels
-                labels = []
-                for tag in tags_str.split(','):
-                    k, v = tag.split('=')
-                    labels.append(f'{k}="{v}"')
-                label_str = '{' + ','.join(labels) + '}'
-            else:
-                base_name = metric_name
-                label_str = ''
-            
-            # Sanitize metric name for Prometheus
+            base_name, label_str = self._parse_metric_tags(metric_name)
             prom_name = base_name.replace('.', '_').replace('-', '_')
             lines.append(f"# HELP mira_{prom_name} Counter metric")
             lines.append(f"# TYPE mira_{prom_name} counter")
@@ -164,17 +179,7 @@ class HealthCheck:
         
         # Export gauges
         for metric_name, value in all_metrics.get('gauges', {}).items():
-            if ':' in metric_name:
-                base_name, tags_str = metric_name.split(':', 1)
-                labels = []
-                for tag in tags_str.split(','):
-                    k, v = tag.split('=')
-                    labels.append(f'{k}="{v}"')
-                label_str = '{' + ','.join(labels) + '}'
-            else:
-                base_name = metric_name
-                label_str = ''
-            
+            base_name, label_str = self._parse_metric_tags(metric_name)
             prom_name = base_name.replace('.', '_').replace('-', '_')
             lines.append(f"# HELP mira_{prom_name} Gauge metric")
             lines.append(f"# TYPE mira_{prom_name} gauge")
@@ -182,17 +187,7 @@ class HealthCheck:
         
         # Export timer summaries
         for metric_name, stats in all_metrics.get('timers', {}).items():
-            if ':' in metric_name:
-                base_name, tags_str = metric_name.split(':', 1)
-                labels = []
-                for tag in tags_str.split(','):
-                    k, v = tag.split('=')
-                    labels.append(f'{k}="{v}"')
-                label_str = '{' + ','.join(labels) + '}'
-            else:
-                base_name = metric_name
-                label_str = ''
-            
+            base_name, label_str = self._parse_metric_tags(metric_name)
             prom_name = base_name.replace('.', '_').replace('-', '_')
             lines.append(f"# HELP mira_{prom_name}_milliseconds Timer metric in milliseconds")
             lines.append(f"# TYPE mira_{prom_name}_milliseconds summary")
