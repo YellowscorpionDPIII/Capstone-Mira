@@ -232,5 +232,161 @@ class TestHealthCheck(unittest.TestCase):
         self.assertIn('not running', message.lower())
 
 
+class TestHealthCheckEnhancements(unittest.TestCase):
+    """Test cases for Health Check production enhancements."""
+    
+    def setUp(self):
+        """Set up test fixtures."""
+        self.health = HealthCheck()
+    
+    def test_graceful_startup_period(self):
+        """Test that graceful startup period allows degraded dependencies."""
+        # Register a failing dependency
+        def failing_check():
+            return False, "Dependency unavailable"
+        
+        self.health.register_dependency("test_dep", failing_check)
+        
+        # During graceful startup, should be degraded not unhealthy
+        status = self.health.check_ready()
+        self.assertIn('graceful_startup', status)
+        
+        if status['graceful_startup']:
+            # Should be degraded during startup
+            self.assertIn(status['status'], ['healthy', 'degraded'])
+    
+    def test_prometheus_metrics_format(self):
+        """Test Prometheus metrics exposition format."""
+        from mira.observability.metrics import get_metrics
+        
+        # Add some metrics
+        metrics = get_metrics()
+        metrics.increment('test.requests', tags={'endpoint': '/api'})
+        metrics.gauge('test.queue_size', 42)
+        
+        # Get Prometheus format
+        prom_output = self.health.get_metrics_prometheus()
+        
+        # Verify format
+        self.assertIn('# HELP', prom_output)
+        self.assertIn('# TYPE', prom_output)
+        self.assertIn('mira_uptime_seconds', prom_output)
+        self.assertIn('mira_health_status', prom_output)
+        
+        # Clean up
+        metrics.reset()
+    
+    def test_redis_connection_check(self):
+        """Test Redis connection health check."""
+        from mira.observability.health import check_redis_connection
+        
+        # Test without Redis configured
+        is_healthy, message = check_redis_connection(None)
+        self.assertTrue(is_healthy)
+        self.assertIn('not configured', message.lower())
+        
+        # Test with valid URL format
+        is_healthy, message = check_redis_connection('redis://localhost:6379/0')
+        self.assertTrue(is_healthy)
+    
+    def test_n8n_webhook_check(self):
+        """Test n8n webhook latency check."""
+        from mira.observability.health import check_n8n_webhook_latency
+        
+        # Test without n8n configured
+        is_healthy, message = check_n8n_webhook_latency(None)
+        self.assertTrue(is_healthy)
+        self.assertIn('not configured', message.lower())
+
+
+class TestConfigValidationEnhancements(unittest.TestCase):
+    """Test cases for config validation enhancements."""
+    
+    def test_validate_production_env_vars(self):
+        """Test production environment variable validation."""
+        from mira.config.validation import validate_env_vars
+        import os
+        
+        # Save original env vars
+        original_base_id = os.environ.get('AIRTABLE_BASE_ID')
+        original_redis = os.environ.get('REDIS_URL')
+        
+        try:
+            # Test missing required vars in production mode
+            os.environ.pop('AIRTABLE_BASE_ID', None)
+            os.environ.pop('REDIS_URL', None)
+            
+            with self.assertRaises(ValueError):
+                validate_env_vars(production_mode=True)
+            
+            # Test with required vars present
+            os.environ['AIRTABLE_BASE_ID'] = 'test_base'
+            os.environ['REDIS_URL'] = 'redis://localhost:6379/0'
+            
+            env_vars = validate_env_vars(production_mode=True)
+            self.assertEqual(env_vars['AIRTABLE_BASE_ID'], 'test_base')
+            self.assertEqual(env_vars['REDIS_URL'], 'redis://localhost:6379/0')
+            
+        finally:
+            # Restore original env vars
+            if original_base_id:
+                os.environ['AIRTABLE_BASE_ID'] = original_base_id
+            else:
+                os.environ.pop('AIRTABLE_BASE_ID', None)
+            
+            if original_redis:
+                os.environ['REDIS_URL'] = original_redis
+            else:
+                os.environ.pop('REDIS_URL', None)
+    
+    def test_secrets_rotation_validation(self):
+        """Test secrets rotation age validation."""
+        from mira.config.validation import validate_secrets_rotation
+        from datetime import datetime, timedelta
+        
+        # Test with old secret
+        old_secret = {
+            'api_key': {
+                'created_at': (datetime.utcnow() - timedelta(days=100)).isoformat()
+            }
+        }
+        
+        result = validate_secrets_rotation(old_secret, max_age_days=90)
+        # Should have warnings but still be valid (warnings don't fail validation)
+        self.assertTrue(result['valid'])
+        self.assertGreater(len(result['warnings']), 0)
+        
+        # Test with recent secret
+        new_secret = {
+            'api_key': {
+                'created_at': (datetime.utcnow() - timedelta(days=30)).isoformat()
+            }
+        }
+        
+        result = validate_secrets_rotation(new_secret, max_age_days=90)
+        self.assertEqual(len(result['warnings']), 0)
+    
+    def test_generate_env_example(self):
+        """Test generating .env.example file."""
+        from mira.config.validation import generate_env_example
+        import tempfile
+        import os
+        
+        # Generate in temp directory
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_path = os.path.join(tmpdir, '.env.example')
+            success = generate_env_example(output_path)
+            
+            self.assertTrue(success)
+            self.assertTrue(os.path.exists(output_path))
+            
+            # Verify content
+            with open(output_path, 'r') as f:
+                content = f.read()
+                self.assertIn('AIRTABLE_BASE_ID', content)
+                self.assertIn('REDIS_URL', content)
+                self.assertIn('MIRA_RATE_LIMITING_ENABLED', content)
+
+
 if __name__ == '__main__':
     unittest.main()

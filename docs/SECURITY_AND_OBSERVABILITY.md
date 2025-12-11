@@ -449,6 +449,377 @@ Recommended grace period: 7-14 days
 
 ---
 
+## Production Metrics Setup
+
+### Prometheus Integration
+
+Mira exposes metrics in Prometheus exposition format via the `/metrics` endpoint.
+
+#### Scrape Configuration
+
+Add the following to your `prometheus.yml`:
+
+```yaml
+scrape_configs:
+  - job_name: 'mira-metrics'
+    static_configs:
+      - targets: ['mira-app:9100']
+        labels:
+          service: 'mira'
+          environment: 'production'
+    metrics_path: '/metrics'
+    scrape_interval: 10s
+```
+
+#### Key Metrics Exposed
+
+**Authentication Metrics:**
+- `mira_auth_attempts_total{result="success|fail"}` - Counter of authentication attempts
+- `mira_api_key_validations` - Counter of API key validations
+
+**Webhook Metrics:**
+- `mira_webhook_duration_seconds{handler, status}` - Histogram of webhook processing duration
+- `mira_webhook_requests_total{handler, status}` - Counter of webhook requests by status
+
+**Airtable Integration Metrics:**
+- `mira_airtable_sync_errors_total{operation}` - Counter of Airtable sync errors
+- `mira_airtable_connection_attempts` - Counter of connection attempts
+
+**System Metrics:**
+- `mira_uptime_seconds` - Gauge of system uptime
+- `mira_health_status` - Gauge of overall health (1=healthy, 0=unhealthy)
+- `mira_dependency_health{dependency}` - Gauge of dependency health status
+
+### StatsD Integration
+
+For applications that prefer StatsD, Mira can send metrics to a StatsD server via UDP.
+
+#### Configuration
+
+```bash
+# Environment variables
+STATSD_HOST=localhost
+STATSD_PORT=8125
+STATSD_PREFIX=mira
+```
+
+#### Metric Format
+
+Metrics are sent with the following format:
+```
+mira.auth.attempts.success:1|c
+mira.webhook.github.duration:125|ms
+mira.airtable.sync.errors:1|c|#operation:create
+```
+
+#### StatsD Exporter for Prometheus
+
+Use the Prometheus StatsD exporter to convert StatsD metrics to Prometheus format:
+
+```yaml
+# statsd-mapping.yml
+mappings:
+  - match: "mira.auth.attempts.*"
+    name: "mira_auth_attempts_total"
+    labels:
+      result: "$1"
+  
+  - match: "mira.webhook.*.duration"
+    name: "mira_webhook_duration_seconds"
+    timer_type: histogram
+    buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5]
+    labels:
+      handler: "$1"
+```
+
+### Grafana Dashboard
+
+A pre-built Grafana dashboard is available at `monitoring/grafana/dashboards/mira-overview.json`.
+
+#### Dashboard Panels
+
+1. **Authentication Attempts** - Line graph showing success/fail rates
+2. **Webhook Duration (95th percentile)** - Performance tracking by handler
+3. **Airtable Sync Errors** - Error rates by operation type
+4. **System Health Status** - Current health indicator
+5. **Uptime** - System uptime display
+6. **Webhook Requests by Status** - Request distribution
+7. **Dependency Health** - Table of all dependency statuses
+
+#### Import Dashboard
+
+1. Log into Grafana (default: http://localhost:3000)
+2. Navigate to Dashboards → Import
+3. Upload `monitoring/grafana/dashboards/mira-overview.json`
+4. Select Prometheus as data source
+
+### Log-Based Metrics (Loki/Promtail)
+
+Structured logs can be queried and visualized using Loki.
+
+#### Audit Event Queries
+
+```logql
+# Failed authentication attempts in last 5 minutes
+{job="mira-audit"} |= "authentication_failed" | json | __error__=""
+
+# API key lifecycle events
+{job="mira-audit"} |= "api_key" | json | event=~"api_key_created|api_key_rotated|api_key_revoked"
+
+# Rate of auth failures (5m window)
+rate({job="mira-audit"} |= "authentication_failed" [5m])
+```
+
+#### Application Log Queries
+
+```logql
+# Error logs in last hour
+{job="mira-app", level="ERROR"} 
+
+# Webhook handler errors
+{job="mira-app"} |= "webhook" |= "error"
+
+# Slow operations (>1s)
+{job="mira-app"} |= "duration" | json | duration > 1000
+```
+
+### Alert Rules
+
+Production alert rules are defined in `monitoring/alerts.yml`.
+
+#### Critical Alerts
+
+**High Authentication Failure Rate (>5%)**
+```yaml
+- alert: HighAuthFailureRate
+  expr: rate(mira_auth_attempts_total{result="fail"}[5m]) > 0.05
+  for: 5m
+  labels:
+    severity: warning
+```
+
+**Health Check Failures**
+```yaml
+- alert: HealthCheckFailure
+  expr: mira_health_status == 0
+  for: 1m
+  labels:
+    severity: critical
+```
+
+**Dependency Unhealthy**
+```yaml
+- alert: DependencyUnhealthy
+  expr: mira_dependency_health < 1
+  for: 5m
+  labels:
+    severity: warning
+```
+
+**High Webhook Error Rate**
+```yaml
+- alert: HighWebhookErrorRate
+  expr: rate(mira_webhook_errors_total[5m]) > 0.1
+  for: 5m
+  labels:
+    severity: warning
+```
+
+**Airtable Sync Errors**
+```yaml
+- alert: AirtableSyncErrors
+  expr: rate(mira_airtable_sync_errors_total[10m]) > 0
+  for: 10m
+  labels:
+    severity: warning
+```
+
+### Docker Compose Stack
+
+A complete monitoring stack is available via `docker-compose.monitoring.yml`.
+
+#### Services Included
+
+- **Prometheus** - Metrics collection and storage
+- **Grafana** - Visualization and dashboards
+- **Redis** - Rate limiting and caching
+- **StatsD Exporter** - StatsD to Prometheus conversion
+- **Loki** - Log aggregation
+- **Promtail** - Log collection and forwarding
+
+#### Quick Start
+
+```bash
+# Start monitoring stack
+docker-compose -f docker-compose.monitoring.yml up -d
+
+# Access services
+# Grafana: http://localhost:3000 (admin/admin)
+# Prometheus: http://localhost:9090
+# Redis: localhost:6379
+
+# View logs
+docker-compose -f docker-compose.monitoring.yml logs -f
+
+# Stop stack
+docker-compose -f docker-compose.monitoring.yml down
+```
+
+#### Production Configuration
+
+Update the following in `prometheus.yml` for production:
+
+```yaml
+scrape_configs:
+  - job_name: 'mira-metrics'
+    static_configs:
+      - targets: ['your-production-host:9100']
+    metrics_path: '/metrics'
+```
+
+## Production Hardening Features
+
+### API Key Manager Enhancements
+
+#### Usage Quotas
+
+Limit API key usage to prevent abuse:
+
+```python
+# Generate key with quota
+key_id, raw_key = manager.generate_key(
+    "production-key",
+    expires_in_days=90,
+    requests_per_hour=1000
+)
+```
+
+#### Automatic Key Rotation
+
+Rotate unused keys after 90 days:
+
+```python
+# Rotate keys inactive for 90+ days
+rotated = manager.rotate_unused_keys(days_unused=90)
+
+for old_id, new_id in rotated:
+    print(f"Rotated: {old_id} → {new_id}")
+```
+
+#### Compliance Audits
+
+Export key inventory for compliance:
+
+```python
+# Export to CSV
+manager.export_key_inventory_csv('key-inventory-2025-01.csv')
+```
+
+CSV includes:
+- key_id, name, created_at, expires_at
+- last_used_at, usage_count, requests_per_hour
+- status (active/expired/revoked)
+
+### Health Check Enhancements
+
+#### /metrics Endpoint
+
+New Prometheus-compatible metrics endpoint:
+
+```bash
+curl http://localhost:5000/metrics
+```
+
+Returns metrics in Prometheus exposition format.
+
+#### Dependency Health Checks
+
+**Redis Connection Pool:**
+```python
+from mira.observability.health import check_redis_connection
+
+health.register_dependency(
+    'redis',
+    lambda: check_redis_connection(os.getenv('REDIS_URL'))
+)
+```
+
+**n8n Webhook Latency:**
+```python
+from mira.observability.health import check_n8n_webhook_latency
+
+health.register_dependency(
+    'n8n',
+    lambda: check_n8n_webhook_latency(os.getenv('N8N_WEBHOOK_URL'))
+)
+```
+
+#### Graceful Startup
+
+Health checks are lenient during the first 30 seconds, allowing dependencies time to initialize:
+
+```python
+# Configured automatically
+health.graceful_startup_seconds = 30  # Default
+```
+
+During graceful startup:
+- Unhealthy dependencies marked as "degraded"
+- Overall status remains "healthy" or "degraded"
+- No critical alerts triggered
+
+### Configuration Validation Enhancements
+
+#### Production Environment Variables
+
+Required variables for production mode:
+
+```python
+from mira.config.validation import validate_env_vars
+
+# Enforce required vars
+env_vars = validate_env_vars(production_mode=True)
+```
+
+Required in production:
+- `AIRTABLE_BASE_ID` - Airtable base identifier
+- `REDIS_URL` - Redis connection URL
+
+#### Secrets Rotation Validation
+
+Check secret age and warn if >90 days old:
+
+```python
+from mira.config.validation import validate_secrets_rotation
+
+secrets = {
+    'api_key': {
+        'created_at': '2024-06-01T00:00:00Z'
+    }
+}
+
+result = validate_secrets_rotation(secrets, max_age_days=90)
+if result['warnings']:
+    for warning in result['warnings']:
+        print(f"⚠️  {warning}")
+```
+
+#### Generate .env.example
+
+Create template with all variables:
+
+```python
+from mira.config.validation import generate_env_example
+
+generate_env_example('.env.example')
+```
+
+Or via CLI:
+
+```bash
+python -m mira.tools.testing_harness export-config
+```
+
 ## Best Practices
 
 ### Security
@@ -458,6 +829,8 @@ Recommended grace period: 7-14 days
 - Enable audit logging in production
 - Review audit logs regularly
 - Use shared secrets for all webhook services
+- Monitor key usage and set quotas
+- Export key inventory monthly for compliance
 
 ### Observability
 - Monitor key metrics in production
@@ -465,6 +838,9 @@ Recommended grace period: 7-14 days
 - Track sync failures to external services
 - Use health checks in orchestration (Kubernetes, etc.)
 - Enable verbose logging for debugging only
+- Use Prometheus and Grafana for visualization
+- Aggregate logs with Loki for analysis
+- Monitor webhook latency and set SLO alerts
 
 ### Operations
 - Validate configuration on startup
@@ -472,6 +848,9 @@ Recommended grace period: 7-14 days
 - Test health endpoints in monitoring systems
 - Keep grace periods for key rotation
 - Document all operational procedures
+- Use graceful startup for dependency initialization
+- Validate required environment variables in production
+- Rotate secrets regularly (< 90 days)
 
 ---
 

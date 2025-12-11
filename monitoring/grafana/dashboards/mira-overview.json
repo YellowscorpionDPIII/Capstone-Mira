@@ -1,0 +1,120 @@
+{
+  "dashboard": {
+    "title": "Mira Platform Overview",
+    "tags": ["mira", "platform"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Authentication Attempts",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(mira_auth_attempts_total{result=\"success\"}[5m])",
+            "legendFormat": "Success"
+          },
+          {
+            "expr": "rate(mira_auth_attempts_total{result=\"fail\"}[5m])",
+            "legendFormat": "Failed"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+      },
+      {
+        "id": 2,
+        "title": "Webhook Duration (95th percentile)",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "histogram_quantile(0.95, rate(mira_webhook_duration_seconds_bucket[5m]))",
+            "legendFormat": "{{handler}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+      },
+      {
+        "id": 3,
+        "title": "Airtable Sync Errors",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(mira_airtable_sync_errors_total[5m])",
+            "legendFormat": "{{operation}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8}
+      },
+      {
+        "id": 4,
+        "title": "System Health Status",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "mira_health_status"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 6, "x": 12, "y": 8},
+        "options": {
+          "colorMode": "background",
+          "graphMode": "none",
+          "justifyMode": "center"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "mappings": [
+              {"type": "value", "value": "1", "text": "Healthy", "color": "green"},
+              {"type": "value", "value": "0", "text": "Unhealthy", "color": "red"}
+            ]
+          }
+        }
+      },
+      {
+        "id": 5,
+        "title": "Uptime",
+        "type": "stat",
+        "targets": [
+          {
+            "expr": "mira_uptime_seconds"
+          }
+        ],
+        "gridPos": {"h": 4, "w": 6, "x": 18, "y": 8},
+        "options": {
+          "colorMode": "value",
+          "graphMode": "none"
+        },
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s"
+          }
+        }
+      },
+      {
+        "id": 6,
+        "title": "Webhook Requests by Status",
+        "type": "graph",
+        "targets": [
+          {
+            "expr": "rate(mira_webhook_requests_total[5m])",
+            "legendFormat": "{{handler}} - {{status}}"
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16}
+      },
+      {
+        "id": 7,
+        "title": "Dependency Health",
+        "type": "table",
+        "targets": [
+          {
+            "expr": "mira_dependency_health",
+            "format": "table",
+            "instant": true
+          }
+        ],
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16}
+      }
+    ],
+    "schemaVersion": 27,
+    "version": 1
+  }
+}

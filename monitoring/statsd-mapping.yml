@@ -1,0 +1,42 @@
+mappings:
+  # Map StatsD metrics to Prometheus format
+  - match: "mira.*.count"
+    name: "mira_${1}_total"
+    labels:
+      type: "counter"
+
+  - match: "mira.*.gauge"
+    name: "mira_${1}"
+    labels:
+      type: "gauge"
+
+  - match: "mira.*.timing"
+    name: "mira_${1}_duration_seconds"
+    timer_type: histogram
+    buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10]
+    labels:
+      type: "timer"
+
+  # Specific mappings for known metrics
+  - match: "mira.auth.attempts.*"
+    name: "mira_auth_attempts_total"
+    labels:
+      result: "$1"
+
+  - match: "mira.webhook.*.duration"
+    name: "mira_webhook_duration_seconds"
+    timer_type: histogram
+    buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 5]
+    labels:
+      handler: "$1"
+
+  - match: "mira.webhook.*.status.*"
+    name: "mira_webhook_requests_total"
+    labels:
+      handler: "$1"
+      status: "$2"
+
+  - match: "mira.airtable.sync.errors.*"
+    name: "mira_airtable_sync_errors_total"
+    labels:
+      operation: "$1"
