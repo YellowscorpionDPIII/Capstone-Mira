@@ -60,6 +60,35 @@ class Timer:
         return self.total_seconds / self.count
 
 
+@dataclass
+class Histogram:
+    """Histogram metric for observing distributions."""
+    name: str
+    observations: List[float] = field(default_factory=list)
+    labels: Dict[str, str] = field(default_factory=dict)
+    
+    def observe(self, value: float) -> None:
+        """Record a value observation."""
+        self.observations.append(value)
+    
+    @property
+    def count(self) -> int:
+        """Get total number of observations."""
+        return len(self.observations)
+    
+    @property
+    def sum(self) -> float:
+        """Get sum of all observations."""
+        return sum(self.observations)
+    
+    @property
+    def average(self) -> float:
+        """Get average of all observations."""
+        if self.count == 0:
+            return 0.0
+        return self.sum / self.count
+
+
 class MetricsCollector:
     """Collects and manages application metrics."""
     
@@ -68,6 +97,7 @@ class MetricsCollector:
         self._counters: Dict[str, Counter] = {}
         self._gauges: Dict[str, Gauge] = {}
         self._timers: Dict[str, Timer] = {}
+        self._histograms: Dict[str, Histogram] = {}
         self.logger = logging.getLogger("mira.metrics")
     
     def _make_metric_key(self, name: str, labels: Optional[Dict[str, str]] = None) -> str:
@@ -125,6 +155,22 @@ class MetricsCollector:
             self._timers[key] = Timer(name=name, labels=labels or {})
         return self._timers[key]
     
+    def histogram(self, name: str, labels: Optional[Dict[str, str]] = None) -> Histogram:
+        """
+        Get or create a histogram metric.
+        
+        Args:
+            name: Metric name (use convention: mira_<component>_<metric>_histogram)
+            labels: Optional labels for the metric
+            
+        Returns:
+            Histogram metric
+        """
+        key = self._make_metric_key(name, labels)
+        if key not in self._histograms:
+            self._histograms[key] = Histogram(name=name, labels=labels or {})
+        return self._histograms[key]
+    
     @contextmanager
     def time(self, name: str, labels: Optional[Dict[str, str]] = None):
         """
@@ -152,7 +198,7 @@ class MetricsCollector:
         Get all metrics in a structured format.
         
         Returns:
-            Dictionary with counters, gauges, and timers
+            Dictionary with counters, gauges, timers, and histograms
         """
         return {
             'counters': [
@@ -180,6 +226,16 @@ class MetricsCollector:
                     'labels': t.labels
                 }
                 for t in self._timers.values()
+            ],
+            'histograms': [
+                {
+                    'name': h.name,
+                    'count': h.count,
+                    'sum': h.sum,
+                    'average': h.average,
+                    'labels': h.labels
+                }
+                for h in self._histograms.values()
             ]
         }
     
@@ -188,6 +244,7 @@ class MetricsCollector:
         self._counters.clear()
         self._gauges.clear()
         self._timers.clear()
+        self._histograms.clear()
 
 
 # Global metrics collector instance

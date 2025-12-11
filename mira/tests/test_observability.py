@@ -108,6 +108,57 @@ class TestMetricsCollector(unittest.TestCase):
         collector1 = get_metrics_collector()
         collector2 = get_metrics_collector()
         self.assertIs(collector1, collector2)
+    
+    def test_histogram_observe(self):
+        """Test histogram metric observations."""
+        histogram = self.collector.histogram('test_histogram')
+        
+        histogram.observe(1.0)
+        histogram.observe(2.0)
+        histogram.observe(3.0)
+        
+        self.assertEqual(histogram.count, 3)
+        self.assertEqual(histogram.sum, 6.0)
+        self.assertEqual(histogram.average, 2.0)
+    
+    def test_histogram_with_labels(self):
+        """Test histogram with labels."""
+        histogram1 = self.collector.histogram('request_size', labels={'service': 'api'})
+        histogram2 = self.collector.histogram('request_size', labels={'service': 'worker'})
+        
+        histogram1.observe(100)
+        histogram1.observe(200)
+        histogram2.observe(50)
+        
+        self.assertEqual(histogram1.count, 2)
+        self.assertEqual(histogram1.sum, 300)
+        self.assertEqual(histogram2.count, 1)
+        self.assertEqual(histogram2.sum, 50)
+    
+    def test_histogram_empty(self):
+        """Test histogram with no observations."""
+        histogram = self.collector.histogram('empty_histogram')
+        
+        self.assertEqual(histogram.count, 0)
+        self.assertEqual(histogram.sum, 0.0)
+        self.assertEqual(histogram.average, 0.0)
+    
+    def test_get_all_metrics_includes_histograms(self):
+        """Test that get_all_metrics includes histograms."""
+        self.collector.histogram('test_histogram').observe(5.0)
+        
+        metrics = self.collector.get_all_metrics()
+        
+        self.assertIn('histograms', metrics)
+        self.assertEqual(len(metrics['histograms']), 1)
+        self.assertEqual(metrics['histograms'][0]['name'], 'test_histogram')
+        self.assertEqual(metrics['histograms'][0]['count'], 1)
+        self.assertEqual(metrics['histograms'][0]['sum'], 5.0)
+    
+    def test_histogram_naming_convention(self):
+        """Test histogram naming convention."""
+        histogram = self.collector.histogram('mira_request_duration_histogram')
+        self.assertEqual(histogram.name, 'mira_request_duration_histogram')
 
 
 class TestHealthRegistry(unittest.TestCase):
