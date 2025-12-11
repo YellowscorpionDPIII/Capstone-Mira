@@ -737,9 +737,10 @@ class TestOrchestratorAgent(unittest.TestCase):
         # Verify timeout metric was incremented
         mock_metrics.increment_timeout.assert_called_once()
         # Verify fallback metric was incremented with 'timeout' reason
-        mock_metrics.increment_fallback.assert_called()
-        call_args = mock_metrics.increment_fallback.call_args
-        self.assertIn('timeout', call_args[0] if call_args[0] else call_args[1].values())
+        mock_metrics.increment_fallback.assert_called_once()
+        args, kwargs = mock_metrics.increment_fallback.call_args
+        # Check that 'timeout' is one of the arguments
+        self.assertIn('timeout', args)
     
     def test_metrics_tracking_on_error_fallback(self):
         """Test that metrics are incremented when async execution fails."""
@@ -758,9 +759,10 @@ class TestOrchestratorAgent(unittest.TestCase):
             response = self.orchestrator._run_async_with_fallback(test_process)
         
         # Verify fallback metric was incremented with 'error' reason
-        mock_metrics.increment_fallback.assert_called()
-        call_args = mock_metrics.increment_fallback.call_args
-        self.assertIn('error', call_args[0] if call_args[0] else call_args[1].values())
+        mock_metrics.increment_fallback.assert_called_once()
+        args, kwargs = mock_metrics.increment_fallback.call_args
+        # Check that 'error' is one of the arguments
+        self.assertIn('error', args)
     
     def test_logger_exception_called_on_async_failure(self):
         """Test that logger.exception is called for root cause analysis on async failure."""

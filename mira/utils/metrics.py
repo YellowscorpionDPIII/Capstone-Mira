@@ -1,6 +1,7 @@
 """Metrics collection for Mira platform using Prometheus."""
 from typing import Optional
 import logging
+import threading
 
 logger = logging.getLogger("mira.metrics")
 
@@ -100,11 +101,12 @@ class PrometheusMetrics:
 
 # Singleton instance
 _metrics_instance: Optional[PrometheusMetrics] = None
+_metrics_lock = threading.Lock()
 
 
 def get_metrics(enabled: bool = True) -> PrometheusMetrics:
     """
-    Get the singleton metrics instance.
+    Get the singleton metrics instance (thread-safe).
     
     Args:
         enabled: Whether metrics collection should be enabled
@@ -114,5 +116,8 @@ def get_metrics(enabled: bool = True) -> PrometheusMetrics:
     """
     global _metrics_instance
     if _metrics_instance is None:
-        _metrics_instance = PrometheusMetrics(enabled=enabled)
+        with _metrics_lock:
+            # Double-check locking pattern
+            if _metrics_instance is None:
+                _metrics_instance = PrometheusMetrics(enabled=enabled)
     return _metrics_instance
