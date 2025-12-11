@@ -8,6 +8,10 @@ from mira.agents.status_reporter_agent import StatusReporterAgent
 from mira.agents.orchestrator_agent import OrchestratorAgent
 from mira.config.settings import get_config
 from mira.utils.logging import setup_logging
+from mira.utils.structured_logging import setup_structured_logging, set_correlation_id
+from mira.utils.graceful_shutdown import get_shutdown_handler
+from mira.utils.config_hotreload import enable_hot_reload
+from mira.utils.secrets_manager import create_secrets_manager, set_secrets_manager
 
 
 class MiraApplication:
@@ -24,12 +28,39 @@ class MiraApplication:
         Args:
             config_path: Optional path to configuration file
         """
+        # Store config path for hot-reload
+        self.config_path = config_path
+        
         # Load configuration
         self.config = get_config(config_path)
         
-        # Setup logging
+        # Setup structured logging with correlation IDs
         log_level = self.config.get('logging.level', 'INFO')
-        setup_logging(level=log_level)
+        use_json = self.config.get('logging.json_format', True)
+        log_file = self.config.get('logging.file', None)
+        
+        if use_json:
+            setup_structured_logging(level=log_level, log_file=log_file)
+        else:
+            setup_logging(level=log_level, log_file=log_file)
+        
+        # Initialize secrets manager
+        self.secrets_manager = create_secrets_manager(self.config.config_data)
+        set_secrets_manager(self.secrets_manager)
+        
+        # Start auto-refresh for secrets if enabled
+        if self.config.get('secrets.auto_refresh', False):
+            self.secrets_manager.start_auto_refresh()
+        
+        # Enable hot-reload if configured
+        self.hot_reload_config = None
+        if config_path and self.config.get('config.hot_reload', False):
+            self.hot_reload_config = enable_hot_reload(
+                self.config, 
+                config_path,
+                poll_interval=self.config.get('config.poll_interval', 5)
+            )
+            self.hot_reload_config.register_reload_callback(self._on_config_reload)
         
         # Initialize message broker
         self.broker = get_broker()
@@ -42,6 +73,9 @@ class MiraApplication:
         self.webhook_handler = None
         if self.config.get('webhook.enabled', False):
             self._initialize_webhook_handler()
+        
+        # Setup graceful shutdown handlers
+        self._setup_shutdown_handlers()
             
     def _initialize_agents(self):
         """Initialize all agents."""
@@ -89,9 +123,77 @@ class MiraApplication:
         """Handle Jira webhook events."""
         # Process Jira events and route to appropriate agents
         return {'status': 'processed', 'service': 'jira'}
+    
+    def _setup_shutdown_handlers(self):
+        """Setup graceful shutdown handlers."""
+        shutdown_handler = get_shutdown_handler()
+        
+        # Register cleanup handlers in order
+        shutdown_handler.register_handler(self._cleanup_webhook_handler)
+        shutdown_handler.register_handler(self._cleanup_broker)
+        shutdown_handler.register_handler(self._cleanup_secrets)
+        shutdown_handler.register_handler(self._cleanup_config_watcher)
+        
+        # Setup signal handlers
+        shutdown_handler.setup()
+    
+    def _cleanup_webhook_handler(self):
+        """Cleanup webhook handler."""
+        if self.webhook_handler:
+            from mira.utils.structured_logging import get_structured_logger
+            logger = get_structured_logger('app')
+            logger.info("Stopping webhook handler...")
+            # Webhook handler cleanup would go here
+    
+    def _cleanup_broker(self):
+        """Cleanup message broker."""
+        if self.broker:
+            from mira.utils.structured_logging import get_structured_logger
+            logger = get_structured_logger('app')
+            logger.info("Stopping message broker...")
+            self.broker.stop()
+    
+    def _cleanup_secrets(self):
+        """Cleanup secrets manager."""
+        if self.secrets_manager:
+            from mira.utils.structured_logging import get_structured_logger
+            logger = get_structured_logger('app')
+            logger.info("Stopping secrets auto-refresh...")
+            self.secrets_manager.stop_auto_refresh()
+    
+    def _cleanup_config_watcher(self):
+        """Cleanup config watcher."""
+        if self.hot_reload_config:
+            from mira.utils.structured_logging import get_structured_logger
+            logger = get_structured_logger('app')
+            logger.info("Stopping configuration watcher...")
+            self.hot_reload_config.stop_watching()
+    
+    def _on_config_reload(self, new_config: dict):
+        """
+        Handle configuration reload.
+        
+        Args:
+            new_config: New configuration dictionary
+        """
+        from mira.utils.structured_logging import get_structured_logger
+        logger = get_structured_logger('app')
+        logger.info("Configuration reloaded, applying changes...")
+        
+        # Update logging level if changed
+        new_level = self.config.get('logging.level', 'INFO')
+        import logging
+        logging.getLogger('mira').setLevel(getattr(logging, new_level.upper()))
         
     def start(self):
         """Start the Mira application."""
+        # Set correlation ID for startup
+        set_correlation_id()
+        
+        from mira.utils.structured_logging import get_structured_logger
+        logger = get_structured_logger('app')
+        logger.info("Starting Mira application...")
+        
         # Start message broker
         if self.config.get('broker.enabled', True):
             self.broker.start()
@@ -104,8 +206,13 @@ class MiraApplication:
             
     def stop(self):
         """Stop the Mira application."""
-        if self.broker:
-            self.broker.stop()
+        from mira.utils.structured_logging import get_structured_logger
+        logger = get_structured_logger('app')
+        logger.info("Stopping Mira application...")
+        
+        # Use graceful shutdown handler
+        shutdown_handler = get_shutdown_handler()
+        shutdown_handler.shutdown()
             
     def process_message(self, message: dict) -> dict:
         """
@@ -117,6 +224,16 @@ class MiraApplication:
         Returns:
             Processing result
         """
+        # Generate correlation ID for this message
+        correlation_id = set_correlation_id()
+        
+        from mira.utils.structured_logging import get_structured_logger
+        logger = get_structured_logger('app')
+        logger.info("Processing message", extra={
+            'message_type': message.get('type'),
+            'correlation_id': correlation_id
+        })
+        
         return self.orchestrator.process(message)
 
 
@@ -132,6 +249,12 @@ def main():
     except KeyboardInterrupt:
         print("\nShutting down Mira...")
         app.stop()
+    except Exception as e:
+        from mira.utils.structured_logging import get_structured_logger
+        logger = get_structured_logger('app')
+        logger.error(f"Application error: {e}", exc_info=True)
+        app.stop()
+        sys.exit(1)
 
 
 if __name__ == '__main__':

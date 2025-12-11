@@ -1,0 +1,87 @@
+{
+  "_comment": "Mira Configuration - Production Deployment Example",
+  
+  "broker": {
+    "enabled": true,
+    "queue_size": 1000
+  },
+  
+  "webhook": {
+    "enabled": false,
+    "host": "0.0.0.0",
+    "port": 5000,
+    "secret_key": "secret://webhook-credentials:secret_key"
+  },
+  
+  "logging": {
+    "level": "INFO",
+    "json_format": true,
+    "file": "/var/log/mira/app.log"
+  },
+  
+  "config": {
+    "hot_reload": true,
+    "poll_interval": 5
+  },
+  
+  "secrets": {
+    "backend": "vault",
+    "auto_refresh": true,
+    "refresh_interval": 3600,
+    "vault": {
+      "url": "https://vault.example.com:8200",
+      "token": null,
+      "mount_point": "secret"
+    },
+    "kubernetes": {
+      "namespace": "default"
+    },
+    "_comment": "Note: Vault token should be provided via MIRA_VAULT_TOKEN environment variable to avoid circular dependency"
+  },
+  
+  "integrations": {
+    "trello": {
+      "enabled": true,
+      "api_key": "secret://trello-credentials:api_key",
+      "api_token": "secret://trello-credentials:api_token",
+      "board_id": "your-board-id"
+    },
+    "jira": {
+      "enabled": true,
+      "url": "https://your-domain.atlassian.net",
+      "username": "secret://jira-credentials:username",
+      "api_token": "secret://jira-credentials:api_token",
+      "project_key": "PROJ"
+    },
+    "github": {
+      "enabled": true,
+      "token": "secret://github-credentials:token",
+      "repository": "owner/repo"
+    },
+    "airtable": {
+      "enabled": true,
+      "api_key": "secret://airtable-credentials:api_key",
+      "base_id": "your-base-id"
+    },
+    "google_docs": {
+      "enabled": true,
+      "credentials_path": "/etc/mira/secrets/google-credentials.json",
+      "folder_id": "your-folder-id"
+    }
+  },
+  
+  "agents": {
+    "project_plan_agent": {
+      "enabled": true
+    },
+    "risk_assessment_agent": {
+      "enabled": true
+    },
+    "status_reporter_agent": {
+      "enabled": true
+    },
+    "orchestrator_agent": {
+      "enabled": true
+    }
+  }
+}

@@ -24,7 +24,14 @@ Modular multi-agent AI workflow system for technical program management. Automat
 - **⚙️ Flexible Configuration**
   - JSON configuration files
   - Environment variable support
+  - Hot-reload support for configuration changes
   - Modular and extensible design
+
+- **🔐 Production-Ready Deployment Features**
+  - **Structured Logging with Correlation IDs**: JSON-formatted logs with automatic correlation ID tracking for request tracing
+  - **Graceful Shutdown**: Clean shutdown with SIGTERM/SIGINT handling and proper resource cleanup
+  - **Configuration Hot-Reload**: Dynamic configuration updates without application restart
+  - **Secrets Management**: Integration with HashiCorp Vault, Kubernetes Secrets, and environment variables
 
 ## 📦 Installation
 
@@ -94,7 +101,133 @@ python -m unittest discover mira/tests
 
 # Run specific test module
 python -m unittest mira.tests.test_agents
+
+# Run deployment feature tests
+python -m unittest mira.tests.test_structured_logging
+python -m unittest mira.tests.test_graceful_shutdown
+python -m unittest mira.tests.test_secrets_manager
+python -m unittest mira.tests.test_config_hotreload
 ```
+
+## 🚀 Deployment Features
+
+### Structured Logging with Correlation IDs
+
+Mira includes built-in structured logging with automatic correlation ID tracking for improved observability:
+
+```python
+from mira.utils.structured_logging import setup_structured_logging, set_correlation_id
+
+# Setup JSON-formatted logging
+setup_structured_logging(level='INFO', json_format=True)
+
+# Each request gets a unique correlation ID
+correlation_id = set_correlation_id()  # Auto-generated UUID
+# Or provide your own: set_correlation_id('custom-id-123')
+```
+
+**Configuration:**
+```json
+{
+  "logging": {
+    "level": "INFO",
+    "json_format": true,
+    "file": "/var/log/mira/app.log"
+  }
+}
+```
+
+**Environment Variables:**
+- `MIRA_LOG_LEVEL`: Set log level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+- `MIRA_LOG_JSON`: Enable JSON formatting (`true` or `false`)
+
+### Graceful Shutdown
+
+Handles SIGTERM and SIGINT signals to cleanly shutdown the application:
+
+```python
+from mira.app import MiraApplication
+
+app = MiraApplication()
+app.start()  # Graceful shutdown handlers are automatically registered
+```
+
+The application will:
+1. Capture shutdown signals (SIGTERM, SIGINT)
+2. Stop accepting new requests
+3. Drain existing connections
+4. Close database connections
+5. Stop background workers
+6. Exit cleanly
+
+### Configuration Hot-Reload
+
+Automatically reload configuration changes without restarting:
+
+**Configuration:**
+```json
+{
+  "config": {
+    "hot_reload": true,
+    "poll_interval": 5
+  }
+}
+```
+
+**Environment Variables:**
+- `MIRA_CONFIG_HOT_RELOAD`: Enable hot-reload (`true` or `false`)
+
+When enabled, Mira watches the configuration file and applies changes automatically. Uses `watchdog` library when available, falls back to polling otherwise.
+
+### Secrets Management
+
+Secure integration with HashiCorp Vault, Kubernetes Secrets, or environment variables:
+
+**Configuration:**
+```json
+{
+  "secrets": {
+    "backend": "vault",
+    "auto_refresh": true,
+    "refresh_interval": 3600,
+    "vault": {
+      "url": "https://vault.example.com",
+      "token": "secret://vault-credentials:token",
+      "mount_point": "secret"
+    }
+  }
+}
+```
+
+**Supported Backends:**
+- `env`: Environment variables (default, always available)
+- `vault`: HashiCorp Vault (requires `hvac` package)
+- `kubernetes`: Kubernetes Secrets (requires cluster access)
+
+**Using Secrets in Configuration:**
+
+Reference secrets using the `secret://` prefix:
+```json
+{
+  "integrations": {
+    "github": {
+      "token": "secret://github-credentials:token"
+    }
+  }
+}
+```
+
+**Environment Variables:**
+- `MIRA_SECRETS_BACKEND`: Backend type (`env`, `vault`, `kubernetes`)
+- `MIRA_SECRETS_AUTO_REFRESH`: Enable automatic secret rotation (`true` or `false`)
+- `MIRA_VAULT_URL`: Vault server URL
+- `MIRA_VAULT_TOKEN`: Vault authentication token
+
+**Features:**
+- Automatic secret caching
+- Periodic secret refresh (configurable interval)
+- Fallback to cached values on fetch errors
+- Callback support for secret rotation events
 
 ## 📁 Project Structure
 
@@ -120,7 +253,11 @@ Capstone-Mira/
 │   ├── config/                # Configuration
 │   │   └── settings.py
 │   ├── utils/                 # Utilities
-│   │   └── logging.py
+│   │   ├── logging.py
+│   │   ├── structured_logging.py
+│   │   ├── graceful_shutdown.py
+│   │   ├── secrets_manager.py
+│   │   └── config_hotreload.py
 │   ├── tests/                 # Test suite
 │   └── app.py                 # Main application
 ├── examples/                  # Example scripts
