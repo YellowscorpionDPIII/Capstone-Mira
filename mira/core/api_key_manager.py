@@ -2,6 +2,7 @@
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
+from collections import defaultdict
 import secrets
 import hashlib
 import json
@@ -199,16 +200,21 @@ class FileAPIKeyStorage(APIKeyStorage):
 class APIKeyManager:
     """Manages API key lifecycle: create, rotate, revoke, and validate."""
     
-    def __init__(self, storage: APIKeyStorage, default_expiry_days: int = 90):
+    def __init__(self, storage: APIKeyStorage, default_expiry_days: int = 90, rate_limit: int = 100):
         """
         Initialize the API key manager.
         
         Args:
             storage: Storage backend for API keys
             default_expiry_days: Default expiration period in days
+            rate_limit: Maximum requests per minute per API key (default: 100)
         """
         self.storage = storage
         self.default_expiry_days = default_expiry_days
+        self.rate_limit = rate_limit
+        self.api_key_usage: Dict[str, Dict[str, Any]] = defaultdict(
+            lambda: {"count": 0, "window_start": datetime.utcnow()}
+        )
     
     def _generate_key(self) -> str:
         """Generate a secure random API key."""
@@ -378,6 +384,41 @@ class APIKeyManager:
                 return is_valid, record.key_id, status
         
         return False, None, None
+    
+    def is_rate_limited(self, api_key: str) -> bool:
+        """
+        Check if an API key has exceeded its rate limit.
+        
+        Args:
+            api_key: The API key to check
+            
+        Returns:
+            True if the key has exceeded the rate limit
+        """
+        usage = self.api_key_usage[api_key]
+        now = datetime.utcnow()
+        
+        # Reset counter if we're in a new time window (1 minute)
+        if now - usage["window_start"] > timedelta(minutes=1):
+            usage["count"] = 0
+            usage["window_start"] = now
+        
+        return usage["count"] >= self.rate_limit
+    
+    def increment_usage(self, api_key: str) -> None:
+        """
+        Increment the usage count for an API key.
+        
+        Args:
+            api_key: The API key to increment
+            
+        Raises:
+            Exception: If the API key has exceeded its rate limit
+        """
+        if self.is_rate_limited(api_key):
+            raise Exception("Rate limit exceeded")
+        
+        self.api_key_usage[api_key]["count"] += 1
     
     def get_key_info(self, key_id: str) -> Optional[Dict[str, Any]]:
         """
