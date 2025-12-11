@@ -1,10 +1,62 @@
-"""OrchestratorAgent for routing messages between agents."""
+"""OrchestratorAgent for routing messages between agents.
+
+Prometheus Metrics Documentation
+=================================
+
+This module exposes the following Prometheus metrics for monitoring orchestrator agent operations:
+
+1. async_timeout_fallbacks_total (Counter)
+   - Description: Tracks the total number of asynchronous timeout fallback occurrences.
+   - Labels:
+     * agent_type: The type/ID of the agent that experienced the timeout (e.g., "plan_generator", "risk_assessor")
+   - Purpose: Monitor how often async operations time out and fall back to synchronous mode.
+   - Example usage:
+     async_timeout_fallbacks_total.labels(agent_type="plan_generator").inc()
+
+2. agent_process_duration_seconds (Histogram)
+   - Description: Tracks the duration of agent processing operations in seconds.
+   - Labels:
+     * agent_type: The type/ID of the agent performing the operation (e.g., "plan_generator", "risk_assessor")
+     * fallback_mode: The execution mode used ("sync", "async", "error")
+     * success: Whether the operation succeeded ("true") or failed ("false")
+   - Purpose: Monitor performance and identify slow operations, compare sync vs async performance,
+     and track success/failure rates.
+   - Example usage:
+     agent_process_duration_seconds.labels(agent_type="plan_generator", fallback_mode="sync", success="true").observe(duration)
+
+3. current_concurrent_agents (Gauge)
+   - Description: Tracks the current number of concurrent agent operations in progress.
+   - Labels: None
+   - Purpose: Monitor system load and concurrent operation capacity.
+   - Example usage:
+     current_concurrent_agents.inc()  # When starting an operation
+     current_concurrent_agents.dec()  # When completing an operation
+"""
 from typing import Dict, Any, Optional
 from mira.core.base_agent import BaseAgent
 from mira.core.message_broker import get_broker
 from config import config
 import asyncio
 import logging
+from prometheus_client import Counter, Histogram, Gauge
+
+# Prometheus metrics
+async_timeout_fallbacks_total = Counter(
+    'async_timeout_fallbacks_total',
+    'Total number of asynchronous timeout fallback occurrences',
+    ['agent_type']
+)
+
+agent_process_duration_seconds = Histogram(
+    'agent_process_duration_seconds',
+    'Duration of agent processing operations in seconds',
+    ['agent_type', 'fallback_mode', 'success']
+)
+
+current_concurrent_agents = Gauge(
+    'current_concurrent_agents',
+    'Current number of concurrent agent operations'
+)
 
 
 async def call_llm(prompt: str, model: str = None):
@@ -75,20 +127,47 @@ class OrchestratorAgent(BaseAgent):
         Returns:
             Response from the target agent
         """
-        if not self.validate_message(message):
-            return self.create_response('error', None, 'Invalid message format')
-            
+        import time
+        start_time = time.time()
+        success = False
+        fallback_mode = "sync"  # Default mode
+        
+        # Increment concurrent operations gauge
+        current_concurrent_agents.inc()
+        
         try:
-            message_type = message['type']
-            
-            if message_type == 'workflow':
-                return self._execute_workflow(message['data'])
-            else:
-                return self._route_message(message)
+            if not self.validate_message(message):
+                return self.create_response('error', None, 'Invalid message format')
                 
-        except Exception as e:
-            self.logger.error(f"Error processing message: {e}")
-            return self.create_response('error', None, str(e))
+            try:
+                message_type = message['type']
+                
+                if message_type == 'workflow':
+                    result = self._execute_workflow(message['data'])
+                    success = True
+                    return result
+                else:
+                    result = self._route_message(message)
+                    success = result.get('status') == 'success'
+                    return result
+                    
+            except Exception as e:
+                self.logger.error(f"Error processing message: {e}")
+                fallback_mode = "error"
+                return self.create_response('error', None, str(e))
+        finally:
+            # Decrement concurrent operations gauge
+            current_concurrent_agents.dec()
+            
+            # Record processing duration
+            duration = time.time() - start_time
+            agent_type = self.agent_id
+            success_label = "true" if success else "false"
+            agent_process_duration_seconds.labels(
+                agent_type=agent_type,
+                fallback_mode=fallback_mode,
+                success=success_label
+            ).observe(duration)
             
     def _route_message(self, message: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -100,6 +179,7 @@ class OrchestratorAgent(BaseAgent):
         Returns:
             Response from target agent
         """
+        import time
         message_type = message['type']
         
         # Determine target agent
@@ -113,11 +193,31 @@ class OrchestratorAgent(BaseAgent):
         if not target_agent:
             return self.create_response('error', None, f'Agent not found: {target_agent_id}')
             
-        # Route message to target agent
+        # Route message to target agent with metrics tracking
         self.logger.info(f"Routing {message_type} to {target_agent_id}")
-        response = target_agent.process(message)
         
-        return response
+        start_time = time.time()
+        success = False
+        fallback_mode = "sync"  # Most agent calls are synchronous
+        
+        try:
+            response = target_agent.process(message)
+            success = response.get('status') == 'success'
+            return response
+        except asyncio.TimeoutError:
+            # Track timeout fallbacks
+            async_timeout_fallbacks_total.labels(agent_type=target_agent_id).inc()
+            fallback_mode = "async"
+            raise
+        finally:
+            # Record agent-specific processing duration
+            duration = time.time() - start_time
+            success_label = "true" if success else "false"
+            agent_process_duration_seconds.labels(
+                agent_type=target_agent_id,
+                fallback_mode=fallback_mode,
+                success=success_label
+            ).observe(duration)
         
     def _execute_workflow(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
