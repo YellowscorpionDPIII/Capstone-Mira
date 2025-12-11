@@ -30,12 +30,19 @@ class OrchestratorAgent(BaseAgent):
     type and coordinates multi-agent workflows.
     """
     
-    def __init__(self, agent_id: str = "orchestrator_agent", config: Dict[str, Any] = None):
-        """Initialize the OrchestratorAgent."""
+    def __init__(self, agent_id: str = "orchestrator_agent", config: Dict[str, Any] = None, process_timeout: float = 30.0):
+        """Initialize the OrchestratorAgent.
+        
+        Args:
+            agent_id: Unique identifier for this agent
+            config: Optional configuration dictionary
+            process_timeout: Timeout in seconds for async operations (default: 30.0)
+        """
         super().__init__(agent_id, config)
         self.broker = get_broker()
         self.agent_registry: Dict[str, BaseAgent] = {}
         self.routing_rules = self._initialize_routing_rules()
+        self.process_timeout = process_timeout
         
     def _initialize_routing_rules(self) -> Dict[str, str]:
         """
@@ -189,3 +196,18 @@ class OrchestratorAgent(BaseAgent):
         """
         self.routing_rules[message_type] = agent_id
         self.logger.info(f"Added routing rule: {message_type} -> {agent_id}")
+        
+    async def _run_async_with_fallback(self, coro):
+        """
+        Run an async coroutine with a configurable timeout.
+        
+        Args:
+            coro: Coroutine to execute
+            
+        Returns:
+            Result from the coroutine
+            
+        Raises:
+            asyncio.TimeoutError: If operation exceeds timeout
+        """
+        return await asyncio.wait_for(coro, timeout=self.process_timeout)
