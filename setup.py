@@ -28,6 +28,7 @@ setup(
     python_requires='>=3.8',
     install_requires=[
         'Flask>=3.0.0',
+        'prometheus-client==0.19.0',
     ],
     extras_require={
         'dev': [
