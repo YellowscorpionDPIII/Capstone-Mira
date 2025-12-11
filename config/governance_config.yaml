@@ -1,0 +1,14 @@
+# Governance Configuration
+# These thresholds control when workflows require human validation and risk assessment
+
+thresholds:
+  # Financial threshold in dollars - workflows exceeding this amount require human validation
+  financial_threshold: 10000
+  
+  # Compliance threshold level - can be 'low', 'medium', 'high', or 'critical'
+  # Workflows at or above this level may require additional review
+  compliance_threshold: 'medium'
+  
+  # Explainability threshold (0.0 to 1.0) - lower scores indicate less explainable decisions
+  # Workflows below this threshold require human validation
+  explainability_threshold: 0.7

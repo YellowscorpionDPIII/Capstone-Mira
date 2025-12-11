@@ -185,6 +185,57 @@ class TestGovernanceAgent(unittest.TestCase):
         self.assertEqual(self.agent.explainability_threshold, 0.6)
         self.assertNotEqual(self.agent.financial_threshold, initial_threshold)
         
+    def test_yaml_config_loading(self):
+        """Test that YAML config file is loaded correctly."""
+        agent = GovernanceAgent()
+        # With YAML config file, should have loaded default thresholds
+        self.assertEqual(agent.financial_threshold, 10000)
+        self.assertEqual(agent.compliance_threshold, 'medium')
+        self.assertEqual(agent.explainability_threshold, 0.7)
+        
+    def test_config_override_yaml(self):
+        """Test that config parameter overrides YAML config."""
+        config = {
+            'financial_threshold': 30000,
+            'explainability_threshold': 0.5
+        }
+        agent = GovernanceAgent(config=config)
+        # Config should override YAML
+        self.assertEqual(agent.financial_threshold, 30000)
+        self.assertEqual(agent.explainability_threshold, 0.5)
+        # compliance_threshold should still come from YAML
+        self.assertEqual(agent.compliance_threshold, 'medium')
+        
+    def test_structured_logging_high_risk(self):
+        """Test that structured logging is used for high-risk workflows."""
+        import logging
+        from io import StringIO
+        
+        # Capture log output
+        log_stream = StringIO()
+        handler = logging.StreamHandler(log_stream)
+        handler.setLevel(logging.WARNING)
+        
+        agent = GovernanceAgent()
+        agent.logger.addHandler(handler)
+        
+        message = {
+            'type': 'assess_governance',
+            'data': {
+                'workflow_id': 'test-workflow-123',
+                'financial_impact': 50000,
+                'compliance_level': 'high',
+                'explainability_score': 0.5
+            }
+        }
+        
+        response = agent.process(message)
+        
+        # Check that warning log was generated
+        log_output = log_stream.getvalue()
+        self.assertIn('High risk workflow', log_output)
+        self.assertIn('test-workflow-123', log_output)
+        
     def test_invalid_message(self):
         """Test handling of invalid message."""
         message = {'invalid': 'message'}
@@ -389,6 +440,103 @@ class TestOrchestratorGovernanceIntegration(unittest.TestCase):
         self.assertEqual(response['status'], 'success')
         # With custom thresholds, this should be low or medium risk
         self.assertIn(response['data']['risk_level'], ['low', 'medium'])
+        
+    def test_governance_error_handling_fallback(self):
+        """Test that governance failures fallback to low risk."""
+        # Create orchestrator with broken governance agent
+        class BrokenGovernanceAgent:
+            agent_id = 'governance_agent'
+            
+            def process(self, message):
+                raise Exception("Governance agent failure")
+        
+        orchestrator = OrchestratorAgent()
+        orchestrator.register_agent(ProjectPlanAgent())
+        orchestrator.register_agent(RiskAssessmentAgent())
+        orchestrator.register_agent(StatusReporterAgent())
+        
+        # Replace governance agent with broken one
+        orchestrator.agent_registry['governance_agent'] = BrokenGovernanceAgent()
+        
+        message = {
+            'type': 'workflow',
+            'data': {
+                'workflow_type': 'project_initialization',
+                'data': {
+                    'name': 'Test Project',
+                    'goals': ['Goal 1'],
+                    'duration_weeks': 5
+                },
+                'governance_data': {
+                    'financial_impact': 100000,
+                    'compliance_level': 'critical',
+                    'explainability_score': 0.3
+                }
+            }
+        }
+        
+        response = orchestrator.process(message)
+        
+        # Should fallback to low risk instead of halting
+        self.assertEqual(response['risk_level'], 'low')
+        self.assertFalse(response['governance']['requires_human_validation'])
+        self.assertGreater(len(response['steps']), 0)
+        
+    def test_pending_approval_pubsub(self):
+        """Test that pending approval workflows are published to message broker."""
+        from mira.core.message_broker import get_broker
+        
+        broker = get_broker()
+        published_messages = []
+        
+        def capture_message(msg):
+            published_messages.append(msg)
+        
+        # Subscribe to pending approval messages
+        broker.subscribe('governance.pending_approval', capture_message)
+        broker.start()
+        
+        try:
+            orchestrator = OrchestratorAgent()
+            orchestrator.register_agent(ProjectPlanAgent())
+            orchestrator.register_agent(RiskAssessmentAgent())
+            orchestrator.register_agent(StatusReporterAgent())
+            
+            message = {
+                'type': 'workflow',
+                'data': {
+                    'workflow_type': 'project_initialization',
+                    'data': {
+                        'name': 'High Risk Project',
+                        'goals': ['Goal 1'],
+                        'duration_weeks': 10
+                    },
+                    'governance_data': {
+                        'financial_impact': 100000,
+                        'compliance_level': 'critical',
+                        'explainability_score': 0.4
+                    }
+                }
+            }
+            
+            response = orchestrator.process(message)
+            
+            # Wait briefly for async message processing
+            import time
+            time.sleep(0.1)  # Reduced from 0.5 to 0.1 seconds
+            
+            # Should have published a pending approval message
+            self.assertEqual(response['status'], 'pending_approval')
+            self.assertEqual(len(published_messages), 1)
+            
+            pub_msg = published_messages[0]
+            self.assertEqual(pub_msg['data']['type'], 'pending_approval')
+            self.assertEqual(pub_msg['data']['workflow_type'], 'project_initialization')
+            self.assertIn('governance', pub_msg['data'])
+            
+        finally:
+            broker.stop()
+            broker.unsubscribe('governance.pending_approval', capture_message)
 
 
 if __name__ == '__main__':

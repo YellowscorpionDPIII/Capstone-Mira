@@ -1,5 +1,6 @@
 """OrchestratorAgent for routing messages between agents."""
 from typing import Dict, Any, Optional
+from datetime import datetime
 from mira.core.base_agent import BaseAgent
 from mira.core.message_broker import get_broker
 from mira.agents.governance_agent import GovernanceAgent
@@ -128,26 +129,47 @@ class OrchestratorAgent(BaseAgent):
         # Perform governance assessment if governance data is provided
         governance_data = data.get('governance_data')
         if governance_data:
-            governance_response = self._route_message({
-                'type': 'assess_governance',
-                'data': governance_data
-            })
-            
-            if governance_response['status'] == 'success':
-                governance_assessment = governance_response['data']
-                results['governance'] = governance_assessment
-                results['risk_level'] = governance_assessment['risk_level']
-                results['requires_human_validation'] = governance_assessment['requires_human_validation']
+            try:
+                governance_response = self._route_message({
+                    'type': 'assess_governance',
+                    'data': governance_data
+                })
                 
-                self.logger.info(
-                    f"Governance assessment completed: risk_level={governance_assessment['risk_level']}, "
-                    f"requires_validation={governance_assessment['requires_human_validation']}"
+                if governance_response['status'] == 'success':
+                    governance_assessment = governance_response['data']
+                    results['governance'] = governance_assessment
+                    results['risk_level'] = governance_assessment['risk_level']
+                    results['requires_human_validation'] = governance_assessment['requires_human_validation']
+                    
+                    self.logger.info(
+                        f"Governance assessment completed: risk_level={governance_assessment['risk_level']}, "
+                        f"requires_validation={governance_assessment['requires_human_validation']}"
+                    )
+                    
+                    # If high risk or requires validation, mark workflow status accordingly
+                    if governance_assessment['requires_human_validation']:
+                        results['status'] = 'pending_approval'
+                        self.logger.warning("Workflow requires human validation before proceeding")
+                        
+                        # Publish to message broker for HITL dashboard integration
+                        self._publish_pending_approval(workflow_type, governance_assessment, workflow_data)
+                else:
+                    # Governance assessment failed, fallback to 'low' risk
+                    self.logger.error(
+                        f"Governance assessment failed: {governance_response.get('error', 'Unknown error')}, "
+                        f"falling back to 'low' risk level"
+                    )
+                    results['governance'] = {'risk_level': 'low', 'requires_human_validation': False}
+                    results['risk_level'] = 'low'
+                    
+            except Exception as e:
+                # On agent failure, fallback to 'low' risk to prevent workflow halts
+                self.logger.error(
+                    f"Exception during governance assessment: {e}, "
+                    f"falling back to 'low' risk level to prevent workflow halt"
                 )
-                
-                # If high risk or requires validation, mark workflow status accordingly
-                if governance_assessment['requires_human_validation']:
-                    results['status'] = 'pending_approval'
-                    self.logger.warning("Workflow requires human validation before proceeding")
+                results['governance'] = {'risk_level': 'low', 'requires_human_validation': False}
+                results['risk_level'] = 'low'
         
         if workflow_type == 'project_initialization':
             # Step 1: Generate project plan
@@ -190,6 +212,35 @@ class OrchestratorAgent(BaseAgent):
                     
         self.logger.info(f"Completed workflow: {workflow_type}")
         return results
+        
+    def _publish_pending_approval(self, workflow_type: str, governance_assessment: Dict[str, Any], workflow_data: Dict[str, Any]) -> None:
+        """
+        Publish pending approval workflow to message broker for HITL dashboard integration.
+        
+        This enables the scaling dashboard agent to monitor workflows requiring human validation.
+        
+        Args:
+            workflow_type: Type of workflow pending approval
+            governance_assessment: Governance assessment results
+            workflow_data: Original workflow data
+        """
+        try:
+            pending_approval_message = {
+                'type': 'pending_approval',
+                'workflow_type': workflow_type,
+                'governance': governance_assessment,
+                'workflow_data': workflow_data,
+                'timestamp': datetime.utcnow().isoformat()
+            }
+            
+            # Publish to broker for consumption by scaling dashboard or other monitoring agents
+            self.broker.publish('governance.pending_approval', pending_approval_message)
+            
+            self.logger.info(
+                f"Published pending approval notification for {workflow_type} workflow to message broker"
+            )
+        except Exception as e:
+            self.logger.error(f"Failed to publish pending approval notification: {e}")
         
     def add_routing_rule(self, message_type: str, agent_id: str):
         """
