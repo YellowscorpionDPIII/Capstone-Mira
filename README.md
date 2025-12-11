@@ -7,11 +7,12 @@ Modular multi-agent AI workflow system for technical program management. Automat
 
 ## 🚀 Features
 
-- **🤖 Four Specialized Agents**
+- **🤖 Five Specialized Agents**
   - ProjectPlanAgent: Generate comprehensive project plans
   - RiskAssessmentAgent: Identify and assess project risks
   - StatusReporterAgent: Create weekly status reports
   - OrchestratorAgent: Coordinate multi-agent workflows
+  - GovernanceAgent: Risk assessment and human-in-the-loop validation
 
 - **🔌 Six Integration Adapters**
   - Trello, Jira, GitHub, Airtable, Google Docs, PDF
@@ -23,8 +24,17 @@ Modular multi-agent AI workflow system for technical program management. Automat
 
 - **⚙️ Flexible Configuration**
   - JSON configuration files
+  - YAML governance thresholds for runtime tuning
   - Environment variable support
   - Modular and extensible design
+
+- **🛡️ Governance & Compliance**
+  - Configurable financial impact thresholds
+  - Compliance level assessment (low, medium, high, critical)
+  - Explainability score validation
+  - Human-in-the-loop validation for high-risk workflows
+  - Pub/sub notifications for pending approvals
+  - Structured logging for observability
 
 ## 📦 Installation
 
@@ -95,7 +105,8 @@ Capstone-Mira/
 │   │   ├── project_plan_agent.py
 │   │   ├── risk_assessment_agent.py
 │   │   ├── status_reporter_agent.py
-│   │   └── orchestrator_agent.py
+│   │   ├── orchestrator_agent.py
+│   │   └── governance_agent.py
 │   ├── integrations/          # External service integrations
 │   │   ├── trello_integration.py
 │   │   ├── jira_integration.py
@@ -113,8 +124,11 @@ Capstone-Mira/
 │   │   └── logging.py
 │   ├── tests/                 # Test suite
 │   └── app.py                 # Main application
+├── config/                    # Configuration files
+│   └── governance_config.yaml # Governance thresholds
 ├── examples/                  # Example scripts
-│   └── example_usage.py
+│   ├── example_usage.py
+│   └── governance_example.py
 ├── requirements.txt
 ├── setup.py
 ├── DOCUMENTATION.md
