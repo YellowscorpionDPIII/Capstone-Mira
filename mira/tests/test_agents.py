@@ -817,17 +817,25 @@ class TestPrometheusMetrics(unittest.TestCase):
     def test_metrics_without_prometheus_client(self):
         """Test metrics gracefully handles missing prometheus_client."""
         from mira.utils.metrics import PrometheusMetrics
-        import sys
+        import mira.utils.metrics as metrics_module
         
-        # Mock prometheus_client as not available
-        with patch.dict('sys.modules', {'prometheus_client': None}):
+        # Save the original value
+        original_available = metrics_module.PROMETHEUS_AVAILABLE
+        
+        try:
+            # Simulate prometheus_client not being available
+            metrics_module.PROMETHEUS_AVAILABLE = False
+            
             with patch('mira.utils.metrics.logger') as mock_logger:
                 metrics = PrometheusMetrics(enabled=True)
                 
                 # Should log warning about missing prometheus_client
+                mock_logger.warning.assert_called()
                 # Metrics should be disabled
-                # The module handles this gracefully
-                self.assertIsNotNone(metrics)
+                self.assertFalse(metrics.enabled)
+        finally:
+            # Restore the original value
+            metrics_module.PROMETHEUS_AVAILABLE = original_available
     
     def test_metrics_increment_timeout(self):
         """Test incrementing timeout counter."""

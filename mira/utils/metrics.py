@@ -5,6 +5,14 @@ import threading
 
 logger = logging.getLogger("mira.metrics")
 
+# Try to import prometheus_client at module level
+try:
+    from prometheus_client import Counter
+    PROMETHEUS_AVAILABLE = True
+except ImportError:
+    PROMETHEUS_AVAILABLE = False
+    Counter = None
+
 
 class PrometheusMetrics:
     """
@@ -28,31 +36,29 @@ class PrometheusMetrics:
             logger.info("Metrics collection is disabled")
             return
             
-        try:
-            from prometheus_client import Counter
-            
-            # Counter for agent process timeouts
-            self._counters['timeout'] = Counter(
-                'agent_process_timeout_total',
-                'Total number of agent process timeouts',
-                ['agent_id', 'function_name']
-            )
-            
-            # Counter for agent process fallbacks
-            self._counters['fallback'] = Counter(
-                'agent_process_fallback_total',
-                'Total number of agent process fallbacks to synchronous execution',
-                ['agent_id', 'function_name', 'reason']
-            )
-            
-            logger.info("Prometheus metrics initialized successfully")
-            
-        except ImportError:
+        if not PROMETHEUS_AVAILABLE:
             logger.warning(
                 "prometheus_client not installed. Metrics will be logged instead. "
                 "Install with: pip install prometheus-client"
             )
             self.enabled = False
+            return
+            
+        # Counter for agent process timeouts
+        self._counters['timeout'] = Counter(
+            'agent_process_timeout_total',
+            'Total number of agent process timeouts',
+            ['agent_id', 'function_name']
+        )
+        
+        # Counter for agent process fallbacks
+        self._counters['fallback'] = Counter(
+            'agent_process_fallback_total',
+            'Total number of agent process fallbacks to synchronous execution',
+            ['agent_id', 'function_name', 'reason']
+        )
+        
+        logger.info("Prometheus metrics initialized successfully")
     
     def increment_timeout(self, agent_id: str, function_name: str):
         """

@@ -216,7 +216,7 @@ class OrchestratorAgent(BaseAgent):
         Example:
             response = self._run_async_with_fallback(target_agent.process, message)
         """
-        func_name = getattr(func, '__name__', str(func))
+        func_name = getattr(func, '__name__', None) or f'<{func.__class__.__name__}>'
         
         try:
             # Try to get or create an event loop
