@@ -352,7 +352,9 @@ class TestConfigValidationEnhancements(unittest.TestCase):
         }
         
         result = validate_secrets_rotation(old_secret, max_age_days=90)
-        self.assertFalse(result['valid'] or len(result['warnings']) > 0)
+        # Should have warnings but still be valid (warnings don't fail validation)
+        self.assertTrue(result['valid'])
+        self.assertGreater(len(result['warnings']), 0)
         
         # Test with recent secret
         new_secret = {
