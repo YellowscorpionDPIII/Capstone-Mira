@@ -1,0 +1,262 @@
+name: Load Testing
+
+on:
+  pull_request:
+    branches: [ main, master ]
+    paths:
+      - 'mira/**'
+      - 'locust/**'
+      - 'requirements.txt'
+      - 'setup.py'
+      - '.github/workflows/load-test.yml'
+  workflow_dispatch:
+    inputs:
+      duration:
+        description: 'Test duration (e.g., 5m, 10m)'
+        required: false
+        default: '5m'
+      users:
+        description: 'Number of concurrent users'
+        required: false
+        default: '17'
+      target_rps:
+        description: 'Target requests per second'
+        required: false
+        default: '16.67'
+
+# Restrict permissions for security
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  load-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    
+    services:
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -e .
+        pip install locust
+    
+    - name: Generate webhook secret
+      id: webhook-secret
+      run: |
+        SECRET=$(python3 -c "import secrets; print(secrets.token_urlsafe(32))")
+        echo "::add-mask::$SECRET"
+        echo "secret=$SECRET" >> $GITHUB_OUTPUT
+    
+    - name: Start Mira webhook server
+      env:
+        MIRA_WEBHOOK_SECRET: ${{ steps.webhook-secret.outputs.secret }}
+        MIRA_WEBHOOK_HOST: '0.0.0.0'
+        MIRA_WEBHOOK_PORT: '5000'
+        MIRA_REDIS_HOST: 'localhost'
+        MIRA_REDIS_PORT: '6379'
+      run: |
+        # Start server in background
+        python -m mira.app &
+        SERVER_PID=$!
+        echo "SERVER_PID=$SERVER_PID" >> $GITHUB_ENV
+        
+        # Wait for server to start
+        echo "Waiting for server to start..."
+        for i in {1..30}; do
+          if curl -s http://localhost:5000/health > /dev/null; then
+            echo "Server is up!"
+            break
+          fi
+          echo "Attempt $i: Server not ready yet..."
+          sleep 2
+        done
+        
+        # Verify server is running
+        if ! curl -s http://localhost:5000/health > /dev/null; then
+          echo "Failed to start server"
+          exit 1
+        fi
+    
+    - name: Run load test
+      id: load-test
+      env:
+        MIRA_HOST: 'http://localhost:5000'
+        MIRA_WEBHOOK_SECRET: ${{ steps.webhook-secret.outputs.secret }}
+        MIRA_LOAD_TEST_USERS: ${{ github.event.inputs.users || '17' }}
+        MIRA_LOAD_TEST_SPAWN_RATE: '5'
+        MIRA_LOAD_TEST_RUNTIME: ${{ github.event.inputs.duration || '5m' }}
+      run: |
+        cd locust
+        locust -f load_test.py \
+          --host=$MIRA_HOST \
+          --users=$MIRA_LOAD_TEST_USERS \
+          --spawn-rate=$MIRA_LOAD_TEST_SPAWN_RATE \
+          --run-time=$MIRA_LOAD_TEST_RUNTIME \
+          --headless \
+          --html=load_test_report.html \
+          --csv=load_test_results \
+          --exit-code-on-error 0 \
+          2>&1 | tee load_test_output.txt
+        
+        # Capture exit code but don't fail workflow yet
+        EXIT_CODE=$?
+        echo "exit_code=$EXIT_CODE" >> $GITHUB_OUTPUT
+    
+    - name: Analyze load test results
+      id: analyze
+      run: |
+        cd locust
+        
+        # Parse results from CSV
+        if [ -f "load_test_results_stats.csv" ]; then
+          # Extract key metrics using awk
+          TOTAL_REQUESTS=$(awk -F',' 'NR==2 {print $3}' load_test_results_stats.csv)
+          TOTAL_FAILURES=$(awk -F',' 'NR==2 {print $4}' load_test_results_stats.csv)
+          AVG_RESPONSE_TIME=$(awk -F',' 'NR==2 {print $5}' load_test_results_stats.csv)
+          REQUESTS_PER_SEC=$(awk -F',' 'NR==2 {print $11}' load_test_results_stats.csv)
+          
+          # Calculate failure rate
+          if [ "$TOTAL_REQUESTS" -gt 0 ]; then
+            FAILURE_RATE=$(echo "scale=2; ($TOTAL_FAILURES / $TOTAL_REQUESTS) * 100" | bc)
+          else
+            FAILURE_RATE=0
+          fi
+          
+          # Save metrics to output
+          echo "total_requests=$TOTAL_REQUESTS" >> $GITHUB_OUTPUT
+          echo "total_failures=$TOTAL_FAILURES" >> $GITHUB_OUTPUT
+          echo "avg_response_time=$AVG_RESPONSE_TIME" >> $GITHUB_OUTPUT
+          echo "requests_per_sec=$REQUESTS_PER_SEC" >> $GITHUB_OUTPUT
+          echo "failure_rate=$FAILURE_RATE" >> $GITHUB_OUTPUT
+          
+          # Performance checks
+          PERFORMANCE_ISSUES=""
+          
+          if (( $(echo "$FAILURE_RATE > 1.0" | bc -l) )); then
+            PERFORMANCE_ISSUES="${PERFORMANCE_ISSUES}⚠️ Failure rate (${FAILURE_RATE}%) exceeds 1%\n"
+          fi
+          
+          if (( $(echo "$AVG_RESPONSE_TIME > 1000" | bc -l) )); then
+            PERFORMANCE_ISSUES="${PERFORMANCE_ISSUES}⚠️ Average response time (${AVG_RESPONSE_TIME}ms) exceeds 1000ms\n"
+          fi
+          
+          if (( $(echo "$REQUESTS_PER_SEC < 15" | bc -l) )); then
+            PERFORMANCE_ISSUES="${PERFORMANCE_ISSUES}⚠️ Request rate (${REQUESTS_PER_SEC} req/sec) below target (15 req/sec)\n"
+          fi
+          
+          echo "performance_issues<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$PERFORMANCE_ISSUES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+          # Set status
+          if [ -z "$PERFORMANCE_ISSUES" ]; then
+            echo "status=✅ PASS" >> $GITHUB_OUTPUT
+          else
+            echo "status=⚠️ PERFORMANCE ISSUES" >> $GITHUB_OUTPUT
+          fi
+        else
+          echo "status=❌ NO RESULTS" >> $GITHUB_OUTPUT
+          echo "total_requests=0" >> $GITHUB_OUTPUT
+          echo "total_failures=0" >> $GITHUB_OUTPUT
+          echo "avg_response_time=0" >> $GITHUB_OUTPUT
+          echo "requests_per_sec=0" >> $GITHUB_OUTPUT
+          echo "failure_rate=0" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Upload load test report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: load-test-report
+        path: |
+          locust/load_test_report.html
+          locust/load_test_results_*.csv
+          locust/load_test_output.txt
+        retention-days: 30
+    
+    - name: Comment on PR
+      uses: actions/github-script@v7
+      if: github.event_name == 'pull_request'
+      with:
+        script: |
+          const fs = require('fs');
+          
+          const status = '${{ steps.analyze.outputs.status }}';
+          const totalRequests = '${{ steps.analyze.outputs.total_requests }}';
+          const totalFailures = '${{ steps.analyze.outputs.total_failures }}';
+          const avgResponseTime = '${{ steps.analyze.outputs.avg_response_time }}';
+          const requestsPerSec = '${{ steps.analyze.outputs.requests_per_sec }}';
+          const failureRate = '${{ steps.analyze.outputs.failure_rate }}';
+          const performanceIssues = `${{ steps.analyze.outputs.performance_issues }}`;
+          
+          let comment = `## 🚀 Load Test Results\n\n`;
+          comment += `**Status:** ${status}\n\n`;
+          comment += `### Metrics\n\n`;
+          comment += `| Metric | Value | Target |\n`;
+          comment += `|--------|-------|--------|\n`;
+          comment += `| Total Requests | ${totalRequests} | - |\n`;
+          comment += `| Total Failures | ${totalFailures} | - |\n`;
+          comment += `| Failure Rate | ${failureRate}% | < 1% |\n`;
+          comment += `| Avg Response Time | ${avgResponseTime}ms | < 1000ms |\n`;
+          comment += `| Requests/sec | ${requestsPerSec} | ≥ 15 |\n`;
+          comment += `| Target Load | 1000 req/min | - |\n\n`;
+          
+          if (performanceIssues) {
+            comment += `### Performance Issues\n\n${performanceIssues}\n`;
+          } else {
+            comment += `### ✅ All performance targets met!\n\n`;
+          }
+          
+          comment += `### Configuration\n\n`;
+          comment += `- Users: ${{ github.event.inputs.users || '17' }}\n`;
+          comment += `- Duration: ${{ github.event.inputs.duration || '5m' }}\n`;
+          comment += `- Python Version: 3.11\n\n`;
+          
+          comment += `📊 [View detailed report in artifacts](https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})\n`;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
+    
+    - name: Stop Mira server
+      if: always()
+      run: |
+        if [ -n "$SERVER_PID" ]; then
+          kill $SERVER_PID || true
+        fi
+    
+    - name: Check performance gates
+      if: steps.analyze.outputs.status != '✅ PASS'
+      run: |
+        echo "Performance issues detected:"
+        echo "${{ steps.analyze.outputs.performance_issues }}"
+        echo ""
+        echo "Load test completed with warnings. Review the artifacts for details."
+        # Don't fail the build, just warn
+        exit 0

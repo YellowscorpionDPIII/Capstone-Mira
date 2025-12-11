@@ -1,0 +1,210 @@
+{
+  "node": "n8n-nodes-base.httpRequest",
+  "nodeVersion": "4.1",
+  "codexVersion": "1.0",
+  "categories": ["Communication"],
+  "resources": {
+    "credentialDocumentation": [
+      {
+        "url": "https://github.com/YellowscorpionDPIII/Capstone-Mira/blob/main/docs/API_KEY_MANAGEMENT.md"
+      }
+    ],
+    "primaryDocumentation": [
+      {
+        "url": "https://github.com/YellowscorpionDPIII/Capstone-Mira"
+      }
+    ]
+  },
+  "alias": ["Mira", "Webhook", "Project Management", "AI Agent"],
+  "subcategories": {
+    "Communication": ["Automation"]
+  },
+  "properties": [
+    {
+      "displayName": "Credential",
+      "name": "authentication",
+      "type": "options",
+      "options": [
+        {
+          "name": "Mira Webhook API",
+          "value": "miraWebhookApi"
+        }
+      ],
+      "default": "miraWebhookApi"
+    },
+    {
+      "displayName": "Method",
+      "name": "method",
+      "type": "options",
+      "options": [
+        {
+          "name": "POST",
+          "value": "POST"
+        }
+      ],
+      "default": "POST",
+      "description": "HTTP method for webhook request"
+    },
+    {
+      "displayName": "Workflow Type",
+      "name": "workflowType",
+      "type": "options",
+      "options": [
+        {
+          "name": "Generate Project Plan",
+          "value": "generate_plan",
+          "description": "Create a comprehensive project plan"
+        },
+        {
+          "name": "Assess Risks",
+          "value": "assess_risks",
+          "description": "Identify and assess project risks"
+        },
+        {
+          "name": "Generate Status Report",
+          "value": "generate_status",
+          "description": "Create weekly status reports"
+        },
+        {
+          "name": "Orchestrate Workflow",
+          "value": "orchestrate",
+          "description": "Coordinate multi-agent workflows"
+        },
+        {
+          "name": "Custom",
+          "value": "custom",
+          "description": "Send custom webhook payload"
+        }
+      ],
+      "default": "orchestrate",
+      "description": "Type of workflow to trigger"
+    },
+    {
+      "displayName": "Project Name",
+      "name": "projectName",
+      "type": "string",
+      "default": "",
+      "displayOptions": {
+        "show": {
+          "workflowType": [
+            "generate_plan",
+            "assess_risks",
+            "generate_status"
+          ]
+        }
+      },
+      "description": "Name of the project"
+    },
+    {
+      "displayName": "Project Goals",
+      "name": "projectGoals",
+      "type": "string",
+      "typeOptions": {
+        "rows": 4
+      },
+      "default": "",
+      "displayOptions": {
+        "show": {
+          "workflowType": [
+            "generate_plan"
+          ]
+        }
+      },
+      "description": "Project goals (comma-separated or one per line)"
+    },
+    {
+      "displayName": "Duration (Weeks)",
+      "name": "durationWeeks",
+      "type": "number",
+      "default": 12,
+      "displayOptions": {
+        "show": {
+          "workflowType": [
+            "generate_plan"
+          ]
+        }
+      },
+      "description": "Project duration in weeks"
+    },
+    {
+      "displayName": "Tasks",
+      "name": "tasks",
+      "type": "string",
+      "typeOptions": {
+        "rows": 4
+      },
+      "default": "",
+      "displayOptions": {
+        "show": {
+          "workflowType": [
+            "assess_risks"
+          ]
+        }
+      },
+      "description": "Tasks to assess (comma-separated or JSON array)"
+    },
+    {
+      "displayName": "Status Data",
+      "name": "statusData",
+      "type": "json",
+      "default": "{}",
+      "displayOptions": {
+        "show": {
+          "workflowType": [
+            "generate_status"
+          ]
+        }
+      },
+      "description": "Status data as JSON object"
+    },
+    {
+      "displayName": "Custom Payload",
+      "name": "customPayload",
+      "type": "json",
+      "default": "{}",
+      "displayOptions": {
+        "show": {
+          "workflowType": [
+            "custom"
+          ]
+        }
+      },
+      "description": "Custom JSON payload for webhook"
+    },
+    {
+      "displayName": "Additional Options",
+      "name": "additionalOptions",
+      "type": "collection",
+      "placeholder": "Add Option",
+      "default": {},
+      "options": [
+        {
+          "displayName": "Timeout (ms)",
+          "name": "timeout",
+          "type": "number",
+          "default": 30000,
+          "description": "Request timeout in milliseconds"
+        },
+        {
+          "displayName": "Retry on Fail",
+          "name": "retryOnFail",
+          "type": "boolean",
+          "default": false,
+          "description": "Whether to retry the request on failure"
+        },
+        {
+          "displayName": "Max Retries",
+          "name": "maxRetries",
+          "type": "number",
+          "default": 3,
+          "description": "Maximum number of retry attempts",
+          "displayOptions": {
+            "show": {
+              "retryOnFail": [true]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
