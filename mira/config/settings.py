@@ -10,6 +10,7 @@ class Config:
     Configuration manager for Mira platform.
     
     Loads configuration from environment variables and config files.
+    Supports secrets management integration.
     """
     
     def __init__(self, config_path: Optional[str] = None):
@@ -21,6 +22,7 @@ class Config:
         """
         self.logger = logging.getLogger("mira.config")
         self.config_data: Dict[str, Any] = {}
+        self.config_path = config_path
         
         if config_path and os.path.exists(config_path):
             self._load_from_file(config_path)
@@ -60,7 +62,26 @@ class Config:
             },
             'logging': {
                 'level': 'INFO',
-                'format': '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+                'format': '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                'json_format': True,
+                'file': None
+            },
+            'config': {
+                'hot_reload': False,
+                'poll_interval': 5
+            },
+            'secrets': {
+                'backend': 'env',  # env, vault, kubernetes
+                'auto_refresh': False,
+                'refresh_interval': 3600,
+                'vault': {
+                    'url': None,
+                    'token': None,
+                    'mount_point': 'secret'
+                },
+                'kubernetes': {
+                    'namespace': 'default'
+                }
             },
             'integrations': {
                 'trello': {
@@ -117,6 +138,26 @@ class Config:
             self.config_data['webhook']['port'] = int(os.getenv('MIRA_WEBHOOK_PORT'))
         if os.getenv('MIRA_WEBHOOK_SECRET'):
             self.config_data['webhook']['secret_key'] = os.getenv('MIRA_WEBHOOK_SECRET')
+        
+        # Logging config
+        if os.getenv('MIRA_LOG_LEVEL'):
+            self.config_data['logging']['level'] = os.getenv('MIRA_LOG_LEVEL')
+        if os.getenv('MIRA_LOG_JSON'):
+            self.config_data['logging']['json_format'] = os.getenv('MIRA_LOG_JSON') == 'true'
+        
+        # Config hot-reload
+        if os.getenv('MIRA_CONFIG_HOT_RELOAD'):
+            self.config_data['config']['hot_reload'] = os.getenv('MIRA_CONFIG_HOT_RELOAD') == 'true'
+        
+        # Secrets config
+        if os.getenv('MIRA_SECRETS_BACKEND'):
+            self.config_data['secrets']['backend'] = os.getenv('MIRA_SECRETS_BACKEND')
+        if os.getenv('MIRA_SECRETS_AUTO_REFRESH'):
+            self.config_data['secrets']['auto_refresh'] = os.getenv('MIRA_SECRETS_AUTO_REFRESH') == 'true'
+        if os.getenv('MIRA_VAULT_URL'):
+            self.config_data['secrets']['vault']['url'] = os.getenv('MIRA_VAULT_URL')
+        if os.getenv('MIRA_VAULT_TOKEN'):
+            self.config_data['secrets']['vault']['token'] = os.getenv('MIRA_VAULT_TOKEN')
             
         # Integration configs
         integrations = ['trello', 'jira', 'github', 'airtable', 'google_docs']
@@ -130,6 +171,8 @@ class Config:
     def get(self, key: str, default: Any = None) -> Any:
         """
         Get a configuration value.
+        
+        Supports secrets manager integration for sensitive values.
         
         Args:
             key: Configuration key (supports dot notation, e.g., 'webhook.port')
@@ -145,6 +188,22 @@ class Config:
             if isinstance(value, dict) and k in value:
                 value = value[k]
             else:
+                return default
+        
+        # If value is a secret reference (starts with 'secret://'), fetch from secrets manager
+        if isinstance(value, str) and value.startswith('secret://'):
+            try:
+                from mira.utils.secrets_manager import get_secrets_manager
+                secret_path = value[9:]  # Remove 'secret://' prefix
+                
+                # Parse path and key if colon is present
+                if ':' in secret_path:
+                    path, secret_key = secret_path.split(':', 1)
+                    return get_secrets_manager().get_secret(path, secret_key)
+                else:
+                    return get_secrets_manager().get_secret(secret_path)
+            except Exception as e:
+                self.logger.error(f"Failed to fetch secret for {key}: {e}")
                 return default
                 
         return value

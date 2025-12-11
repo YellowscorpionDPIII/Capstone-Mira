@@ -11,7 +11,26 @@
   },
   "logging": {
     "level": "INFO",
-    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "json_format": true,
+    "file": null
+  },
+  "config": {
+    "hot_reload": false,
+    "poll_interval": 5
+  },
+  "secrets": {
+    "backend": "env",
+    "auto_refresh": false,
+    "refresh_interval": 3600,
+    "vault": {
+      "url": null,
+      "token": null,
+      "mount_point": "secret"
+    },
+    "kubernetes": {
+      "namespace": "default"
+    }
   },
   "integrations": {
     "trello": {
