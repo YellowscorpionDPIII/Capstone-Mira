@@ -2,6 +2,8 @@
 from typing import Dict, Any, Optional
 from mira.core.base_agent import BaseAgent
 from mira.core.message_broker import get_broker
+from mira.config.settings import get_config
+from mira.utils.metrics import get_metrics
 from config import config
 import asyncio
 import logging
@@ -36,6 +38,12 @@ class OrchestratorAgent(BaseAgent):
         self.broker = get_broker()
         self.agent_registry: Dict[str, BaseAgent] = {}
         self.routing_rules = self._initialize_routing_rules()
+        
+        # Load configuration for timeout and metrics
+        self._config = get_config()
+        self._timeout = self._config.get('orchestrator.agent_process_timeout', 30.0)
+        metrics_enabled = self._config.get('orchestrator.metrics_enabled', True)
+        self._metrics = get_metrics(enabled=metrics_enabled)
         
     def _initialize_routing_rules(self) -> Dict[str, str]:
         """
@@ -183,15 +191,19 @@ class OrchestratorAgent(BaseAgent):
         """
         Execute a function with async timeout and fallback to synchronous execution.
         
-        This method attempts to run the given function asynchronously with a timeout
-        for production safety. If the async execution times out or fails, it falls
+        This method attempts to run the given function asynchronously with a configurable
+        timeout for production safety. If the async execution times out or fails, it falls
         back to synchronous execution to ensure reliability.
         
         Fallback behavior:
-        1. First, attempts to run the function in a thread pool with a 30-second timeout
+        1. First, attempts to run the function in a thread pool with a configurable timeout (default: 30s)
         2. If timeout occurs (asyncio.TimeoutError), falls back to direct synchronous call
         3. If any other error occurs during async execution, falls back to synchronous call
         4. If synchronous fallback also fails, returns an error response
+        
+        Metrics:
+        - Increments agent_process_timeout_total when timeout occurs
+        - Increments agent_process_fallback_total when fallback is used
         
         Args:
             func: The function to execute (typically agent.process)
@@ -204,6 +216,8 @@ class OrchestratorAgent(BaseAgent):
         Example:
             response = self._run_async_with_fallback(target_agent.process, message)
         """
+        func_name = getattr(func, '__name__', str(func))
+        
         try:
             # Try to get or create an event loop
             try:
@@ -215,27 +229,35 @@ class OrchestratorAgent(BaseAgent):
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
                 
-                # Run in thread pool with 30-second timeout
+                # Run in thread pool with configurable timeout
                 try:
                     response = loop.run_until_complete(
                         asyncio.wait_for(
                             asyncio.to_thread(func, *args, **kwargs),
-                            timeout=30.0
+                            timeout=self._timeout
                         )
                     )
                     return response
                 except asyncio.TimeoutError:
-                    func_name = getattr(func, '__name__', str(func))
                     self.logger.warning(
-                        f"Async execution of {func_name} timed out after 30s, falling back to synchronous execution"
+                        f"Async execution of {func_name} timed out after {self._timeout}s, "
+                        f"falling back to synchronous execution"
                     )
+                    # Increment timeout metric
+                    self._metrics.increment_timeout(self.agent_id, func_name)
+                    # Increment fallback metric with reason 'timeout'
+                    self._metrics.increment_fallback(self.agent_id, func_name, 'timeout')
                     return func(*args, **kwargs)
                 finally:
                     loop.close()
         except Exception as e:
             # Fallback to synchronous execution if async fails
-            func_name = getattr(func, '__name__', str(func))
-            self.logger.warning(f"Async execution of {func_name} failed ({str(e)}), falling back to synchronous execution")
+            # Use logger.exception() to capture full stack trace for root cause analysis
+            self.logger.exception(
+                f"Async execution of {func_name} failed, falling back to synchronous execution"
+            )
+            # Increment fallback metric with reason 'error'
+            self._metrics.increment_fallback(self.agent_id, func_name, 'error')
             try:
                 return func(*args, **kwargs)
             except Exception as sync_error:

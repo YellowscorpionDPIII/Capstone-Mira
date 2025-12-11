@@ -35,6 +35,9 @@ setup(
             'pytest-cov>=4.0.0',
             'pytest-benchmark>=4.0.0',
         ],
+        'metrics': [
+            'prometheus-client>=0.19.0',
+        ],
     },
     entry_points={
         'console_scripts': [
