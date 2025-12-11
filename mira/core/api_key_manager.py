@@ -143,7 +143,9 @@ class FileAPIKeyStorage(APIKeyStorage):
     def _ensure_storage_file(self) -> None:
         """Ensure storage file exists."""
         if not os.path.exists(self.storage_path):
-            os.makedirs(os.path.dirname(self.storage_path), exist_ok=True)
+            dirname = os.path.dirname(self.storage_path)
+            if dirname:  # Only create directories if there's a directory component
+                os.makedirs(dirname, exist_ok=True)
             with open(self.storage_path, 'w') as f:
                 json.dump({}, f)
     
