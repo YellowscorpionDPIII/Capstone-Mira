@@ -30,12 +30,13 @@
     "refresh_interval": 3600,
     "vault": {
       "url": "https://vault.example.com:8200",
-      "token": "secret://vault-auth:token",
+      "token": null,
       "mount_point": "secret"
     },
     "kubernetes": {
       "namespace": "default"
-    }
+    },
+    "_comment": "Note: Vault token should be provided via MIRA_VAULT_TOKEN environment variable to avoid circular dependency"
   },
   
   "integrations": {

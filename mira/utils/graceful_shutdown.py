@@ -53,7 +53,12 @@ class GracefulShutdown:
             signum: Signal number
             frame: Current stack frame
         """
-        signal_name = signal.Signals(signum).name
+        # Get signal name safely
+        try:
+            signal_name = signal.Signals(signum).name
+        except (ValueError, AttributeError):
+            signal_name = f"Signal {signum}"
+        
         self.logger.info(f"Received {signal_name} signal, initiating graceful shutdown...")
         self.shutdown()
     

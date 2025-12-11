@@ -294,9 +294,10 @@ class SecretsManager:
         """Refresh all cached secrets."""
         for cache_key in list(self.cache.keys()):
             try:
-                # Parse cache key
+                # Parse cache key (use rsplit to handle paths with colons)
                 if ':' in cache_key:
-                    path, key = cache_key.split(':', 1)
+                    parts = cache_key.rsplit(':', 1)
+                    path, key = parts[0], parts[1]
                 else:
                     path, key = cache_key, None
                 

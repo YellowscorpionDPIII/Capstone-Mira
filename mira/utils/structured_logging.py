@@ -66,11 +66,16 @@ class JSONFormatter(logging.Formatter):
                               'message', 'pathname', 'process', 'processName',
                               'relativeCreated', 'thread', 'threadName', 'exc_info',
                               'exc_text', 'stack_info', 'correlation_id']:
-                    try:
-                        # Only include JSON-serializable values
-                        json.dumps(value)
+                    # Only include JSON-serializable values
+                    if isinstance(value, (str, int, float, bool, type(None))):
                         log_data[key] = value
-                    except (TypeError, ValueError):
+                    elif isinstance(value, (list, dict)):
+                        try:
+                            json.dumps(value)
+                            log_data[key] = value
+                        except (TypeError, ValueError):
+                            log_data[key] = str(value)
+                    else:
                         log_data[key] = str(value)
         
         return json.dumps(log_data)

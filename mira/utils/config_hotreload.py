@@ -197,8 +197,8 @@ class HotReloadableConfig:
         old_config = self.config.config_data.copy()
         self.config.config_data = new_config
         
-        # Re-apply environment variable overrides
-        self.config._load_from_env()
+        # Re-apply environment variable overrides using public method
+        self.config.reload_from_env()
         
         # Call user-registered callbacks
         for callback in self.reload_callbacks:

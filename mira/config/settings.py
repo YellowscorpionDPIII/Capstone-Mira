@@ -129,6 +129,10 @@ class Config:
             }
         }
         
+    def reload_from_env(self):
+        """Reload configuration from environment variables."""
+        self._load_from_env()
+        
     def _load_from_env(self):
         """Load configuration from environment variables."""
         # Webhook config
