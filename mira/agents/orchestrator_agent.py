@@ -1,5 +1,6 @@
 """OrchestratorAgent for routing messages between agents."""
 from typing import Dict, Any, Optional
+from datetime import datetime
 from mira.core.base_agent import BaseAgent
 from mira.core.message_broker import get_broker
 from mira.agents.governance_agent import GovernanceAgent
@@ -229,7 +230,7 @@ class OrchestratorAgent(BaseAgent):
                 'workflow_type': workflow_type,
                 'governance': governance_assessment,
                 'workflow_data': workflow_data,
-                'timestamp': self.create_response('success', None)['timestamp']
+                'timestamp': datetime.utcnow().isoformat()
             }
             
             # Publish to broker for consumption by scaling dashboard or other monitoring agents

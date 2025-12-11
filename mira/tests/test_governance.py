@@ -521,9 +521,9 @@ class TestOrchestratorGovernanceIntegration(unittest.TestCase):
             
             response = orchestrator.process(message)
             
-            # Wait a moment for async message processing
+            # Wait briefly for async message processing
             import time
-            time.sleep(0.5)
+            time.sleep(0.1)  # Reduced from 0.5 to 0.1 seconds
             
             # Should have published a pending approval message
             self.assertEqual(response['status'], 'pending_approval')

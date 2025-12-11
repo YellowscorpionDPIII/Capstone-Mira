@@ -60,11 +60,9 @@ class GovernanceAgent(BaseAgent):
         Returns:
             Dictionary with threshold values, or empty dict if file not found
         """
-        config_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-            'config',
-            'governance_config.yaml'
-        )
+        # Get the repository root directory (3 levels up from this file)
+        repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+        config_path = os.path.join(repo_root, 'config', 'governance_config.yaml')
         
         try:
             if os.path.exists(config_path):
