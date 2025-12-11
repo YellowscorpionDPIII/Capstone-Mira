@@ -61,13 +61,18 @@ class JSONFormatter(logging.Formatter):
             
         # Add extra fields if enabled
         if self.include_extra_fields:
+            # Standard LogRecord attributes to exclude
+            standard_attrs = {
+                'name', 'msg', 'args', 'created', 'filename', 'funcName',
+                'levelname', 'levelno', 'lineno', 'module', 'msecs',
+                'message', 'pathname', 'process', 'processName', 'relativeCreated',
+                'thread', 'threadName', 'exc_info', 'exc_text', 'stack_info',
+                'correlation_id', 'taskName', 'getMessage', 'asctime'
+            }
+            
             # Add any extra attributes added to the record
             for key, value in record.__dict__.items():
-                if key not in ['name', 'msg', 'args', 'created', 'filename', 'funcName',
-                              'levelname', 'levelno', 'lineno', 'module', 'msecs',
-                              'message', 'pathname', 'process', 'processName', 'relativeCreated',
-                              'thread', 'threadName', 'exc_info', 'exc_text', 'stack_info',
-                              'correlation_id', 'taskName']:
+                if key not in standard_attrs and not key.startswith('_'):
                     try:
                         # Try to serialize the value, skip if not serializable
                         json.dumps(value)

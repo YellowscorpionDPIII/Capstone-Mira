@@ -164,13 +164,21 @@ class HotReloadConfig:
         self.logger.info("Reloading configuration")
         
         try:
-            # Reload the configuration data
-            if hasattr(self.config_instance, '_load_from_file'):
+            # Try common reload methods
+            if hasattr(self.config_instance, 'reload'):
+                # Preferred: use a standard reload method
+                self.config_instance.reload()
+            elif hasattr(self.config_instance, '_load_from_file'):
+                # Fallback: use _load_from_file if available
                 self.config_instance._load_from_file(self.config_path)
             elif hasattr(self.config_instance, 'load_yaml_config'):
+                # Fallback: use load_yaml_config if available
                 self.config_instance.load_yaml_config()
             else:
-                self.logger.error("Config instance does not have a reload method")
+                self.logger.warning(
+                    "Config instance does not have a supported reload method. "
+                    "Please implement 'reload()', '_load_from_file(path)', or 'load_yaml_config()'"
+                )
                 return
                 
             # Execute reload callbacks

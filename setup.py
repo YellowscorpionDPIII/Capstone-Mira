@@ -4,6 +4,22 @@ from setuptools import setup, find_packages
 with open('README.md', 'r', encoding='utf-8') as f:
     long_description = f.read()
 
+extras_require = {
+    'dev': [
+        'pytest>=7.0.0',
+        'pytest-cov>=4.0.0',
+        'pytest-benchmark>=4.0.0',
+    ],
+    'vault': [
+        'hvac>=1.0.0',
+    ],
+    'kubernetes': [
+        'kubernetes>=28.0.0',
+    ],
+}
+# Add 'secrets' extra that includes both vault and kubernetes
+extras_require['secrets'] = extras_require['vault'] + extras_require['kubernetes']
+
 setup(
     name='mira',
     version='1.0.0',
@@ -30,26 +46,11 @@ setup(
         'Flask>=3.0.0',
         'watchdog>=3.0.0',
     ],
-    extras_require={
-        'dev': [
-            'pytest>=7.0.0',
-            'pytest-cov>=4.0.0',
-            'pytest-benchmark>=4.0.0',
-        ],
-        'vault': [
-            'hvac>=1.0.0',
-        ],
-        'kubernetes': [
-            'kubernetes>=28.0.0',
-        ],
-        'secrets': [
-            'hvac>=1.0.0',
-            'kubernetes>=28.0.0',
-        ],
-    },
+    extras_require=extras_require,
     entry_points={
         'console_scripts': [
             'mira=mira.app:main',
         ],
     },
 )
+

@@ -338,10 +338,11 @@ class SecretsManager:
         for cache_key in list(self.cache.keys()):
             try:
                 # Parse cache key
-                if ':' in cache_key:
-                    path, key = cache_key.split(':', 1)
-                    if key == 'None':
-                        key = None
+                parts = cache_key.split(':', 1)
+                if len(parts) == 2:
+                    path, key_str = parts
+                    # Handle None vs string "None"
+                    key = None if key_str == 'None' else key_str
                 else:
                     path = cache_key
                     key = None

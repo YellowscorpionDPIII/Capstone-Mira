@@ -62,10 +62,18 @@ class MiraApplication:
         self.broker = get_broker()
         
         # Register broker cleanup on shutdown
-        self.shutdown_handler.register_callback(
-            lambda: self.broker.stop() if self.broker.running else None,
-            name='message_broker_stop'
-        )
+        def stop_broker():
+            """Stop message broker if running."""
+            if self.broker and hasattr(self.broker, 'running') and self.broker.running:
+                self.broker.stop()
+            elif self.broker and hasattr(self.broker, 'stop'):
+                # Try to stop even if we can't check running status
+                try:
+                    self.broker.stop()
+                except:
+                    pass
+        
+        self.shutdown_handler.register_callback(stop_broker, name='message_broker_stop')
         
         # Initialize agents
         self.agents = {}
