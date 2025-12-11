@@ -169,9 +169,12 @@ def validate_config(config_dict: Dict[str, Any]) -> MiraConfig:
         raise
 
 
-def validate_env_vars() -> Dict[str, str]:
+def validate_env_vars(production_mode: bool = False) -> Dict[str, str]:
     """
     Validate required environment variables.
+    
+    Args:
+        production_mode: If True, enforce required production variables
     
     Returns:
         Dict of validated environment variables
@@ -182,20 +185,147 @@ def validate_env_vars() -> Dict[str, str]:
     env_vars = {}
     logger = logging.getLogger("mira.config.validation")
     
+    # Required for production
+    if production_mode:
+        required_vars = {
+            'AIRTABLE_BASE_ID': 'Airtable base ID',
+            'REDIS_URL': 'Redis connection URL',
+        }
+        
+        missing = []
+        for var, description in required_vars.items():
+            value = os.getenv(var)
+            if value:
+                env_vars[var] = value
+            else:
+                missing.append(f"{var} ({description})")
+        
+        if missing:
+            raise ValueError(f"Required environment variables missing: {', '.join(missing)}")
+    
     # Optional but recommended environment variables
     recommended_vars = {
         'MIRA_WEBHOOK_SECRET': 'Webhook secret key',
         'MIRA_LOG_LEVEL': 'Logging level',
+        'AIRTABLE_API_KEY': 'Airtable API key',
+        'REDIS_URL': 'Redis connection URL',
     }
     
     for var, description in recommended_vars.items():
+        if var in env_vars:
+            continue  # Already checked as required
         value = os.getenv(var)
         if value:
             env_vars[var] = value
         else:
-            logger.warning(f"Recommended environment variable not set: {var} ({description})")
+            if not production_mode or var not in ['AIRTABLE_BASE_ID', 'REDIS_URL']:
+                logger.warning(f"Recommended environment variable not set: {var} ({description})")
     
     return env_vars
+
+
+def validate_secrets_rotation(secrets_dict: Dict[str, Any], max_age_days: int = 90) -> Dict[str, Any]:
+    """
+    Validate that secrets are not older than specified age.
+    
+    Args:
+        secrets_dict: Dictionary of secrets with metadata
+        max_age_days: Maximum age in days before rotation required
+        
+    Returns:
+        Dict with validation results and warnings
+    """
+    from datetime import datetime, timedelta
+    
+    logger = logging.getLogger("mira.config.validation")
+    results = {
+        'valid': True,
+        'warnings': [],
+        'errors': []
+    }
+    
+    now = datetime.utcnow()
+    threshold = timedelta(days=max_age_days)
+    
+    for secret_name, secret_info in secrets_dict.items():
+        if isinstance(secret_info, dict) and 'created_at' in secret_info:
+            try:
+                created_at = datetime.fromisoformat(secret_info['created_at'])
+                age = now - created_at
+                
+                if age > threshold:
+                    warning = f"Secret '{secret_name}' is {age.days} days old (> {max_age_days} days) - rotation recommended"
+                    results['warnings'].append(warning)
+                    logger.warning(warning)
+            except (ValueError, TypeError) as e:
+                error = f"Invalid date format for secret '{secret_name}': {e}"
+                results['errors'].append(error)
+                results['valid'] = False
+                logger.error(error)
+    
+    return results
+
+
+def generate_env_example(output_path: str = '.env.example') -> bool:
+    """
+    Generate .env.example file with all required variables.
+    
+    Args:
+        output_path: Path to output file
+        
+    Returns:
+        True if successful
+    """
+    logger = logging.getLogger("mira.config.validation")
+    
+    env_template = """# Mira Platform Environment Variables
+
+# Required for production
+AIRTABLE_BASE_ID=your_base_id_here
+AIRTABLE_API_KEY=your_api_key_here
+REDIS_URL=redis://localhost:6379/0
+
+# Webhook configuration
+MIRA_WEBHOOK_SECRET=change_me_to_random_secret
+MIRA_WEBHOOK_HOST=0.0.0.0
+MIRA_WEBHOOK_PORT=5000
+
+# Rate limiting
+MIRA_RATE_LIMITING_ENABLED=true
+MIRA_RATE_LIMIT_PER_MINUTE=60
+
+# Logging
+MIRA_LOG_LEVEL=INFO
+MIRA_AUDIT_LOG_FILE=/var/log/mira/audit.log
+
+# Security
+MIRA_API_KEY_ENABLED=true
+MIRA_API_KEY_EXPIRY_DAYS=90
+
+# Observability
+MIRA_METRICS_ENABLED=true
+MIRA_HEALTH_CHECK_ENABLED=true
+
+# Integration secrets (optional)
+GITHUB_WEBHOOK_SECRET=your_github_secret
+TRELLO_WEBHOOK_SECRET=your_trello_secret
+
+# n8n integration (optional)
+N8N_WEBHOOK_URL=https://your-n8n-instance.com/webhook/mira
+
+# Operational
+MIRA_MAINTENANCE_MODE=false
+MIRA_VERBOSE_LOGGING=false
+"""
+    
+    try:
+        with open(output_path, 'w') as f:
+            f.write(env_template)
+        logger.info(f"Generated environment variables template: {output_path}")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to generate .env.example: {e}")
+        return False
 
 
 def load_and_validate_config(config_path: Optional[str] = None) -> MiraConfig:

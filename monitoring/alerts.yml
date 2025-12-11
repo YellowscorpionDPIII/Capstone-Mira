@@ -1,0 +1,73 @@
+groups:
+  - name: mira_alerts
+    interval: 30s
+    rules:
+      # Authentication failure rate alert
+      - alert: HighAuthFailureRate
+        expr: rate(mira_auth_attempts_total{result="fail"}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High authentication failure rate"
+          description: "Authentication failure rate is {{ $value }} per second (>5%)"
+
+      # Health check failures
+      - alert: HealthCheckFailure
+        expr: mira_health_status == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Mira health check failing"
+          description: "Mira health check has been failing for 1 minute"
+
+      # Dependency health issues
+      - alert: DependencyUnhealthy
+        expr: mira_dependency_health < 1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Dependency {{ $labels.dependency }} is unhealthy"
+          description: "Dependency {{ $labels.dependency }} has been unhealthy for 5 minutes"
+
+      # Webhook error rate
+      - alert: HighWebhookErrorRate
+        expr: rate(mira_webhook_errors_total[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High webhook error rate"
+          description: "Webhook error rate is {{ $value }} per second for handler {{ $labels.handler }}"
+
+      # Airtable sync errors
+      - alert: AirtableSyncErrors
+        expr: rate(mira_airtable_sync_errors_total[10m]) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Airtable sync errors detected"
+          description: "Airtable sync errors for operation {{ $labels.operation }}: {{ $value }} per second"
+
+      # High webhook latency
+      - alert: HighWebhookLatency
+        expr: histogram_quantile(0.95, rate(mira_webhook_duration_seconds_bucket[5m])) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High webhook latency"
+          description: "95th percentile webhook latency is {{ $value }}s for handler {{ $labels.handler }}"
+
+      # Service down
+      - alert: MiraServiceDown
+        expr: up{job="mira-metrics"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Mira service is down"
+          description: "Mira service has been down for 2 minutes"

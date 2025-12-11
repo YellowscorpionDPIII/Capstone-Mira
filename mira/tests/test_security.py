@@ -1,5 +1,7 @@
 """Tests for security features."""
 import unittest
+import os
+import tempfile
 from datetime import datetime, timedelta
 from mira.security.api_key_manager import APIKeyManager
 from mira.security.audit_logger import AuditLogger
@@ -286,6 +288,101 @@ class TestAuditLogger(unittest.TestCase):
             key_id='test123',
             details={'name': 'test_key'}
         )
+
+
+class TestAPIKeyManagerEnhancements(unittest.TestCase):
+    """Test cases for API Key Manager production enhancements."""
+    
+    def setUp(self):
+        """Set up test fixtures."""
+        self.audit_logger = AuditLogger()
+        self.manager = APIKeyManager(audit_logger=self.audit_logger)
+    
+    def test_generate_key_with_quota(self):
+        """Test API key generation with usage quota."""
+        key_id, raw_key = self.manager.generate_key(
+            "test_key",
+            requests_per_hour=1000
+        )
+        
+        api_key = self.manager.keys[key_id]
+        self.assertEqual(api_key.requests_per_hour, 1000)
+    
+    def test_key_usage_tracking(self):
+        """Test that key usage is tracked."""
+        key_id, raw_key = self.manager.generate_key("test_key")
+        
+        # Validate key multiple times
+        for _ in range(5):
+            is_valid, _, _ = self.manager.validate_key(raw_key)
+            self.assertTrue(is_valid)
+        
+        # Check usage count
+        api_key = self.manager.keys[key_id]
+        self.assertEqual(api_key.usage_count, 5)
+        self.assertIsNotNone(api_key.last_used_at)
+    
+    def test_rotate_unused_keys(self):
+        """Test automatic rotation of unused keys."""
+        # Create a key and backdate it
+        key_id, raw_key = self.manager.generate_key("old_key")
+        api_key = self.manager.keys[key_id]
+        api_key.created_at = datetime.utcnow() - timedelta(days=100)
+        
+        # Rotate unused keys (>90 days)
+        rotated = self.manager.rotate_unused_keys(days_unused=90)
+        
+        # Should have rotated one key
+        self.assertEqual(len(rotated), 1)
+        self.assertEqual(rotated[0][0], key_id)
+    
+    def test_export_key_inventory_csv(self):
+        """Test exporting key inventory to CSV."""
+        # Create some test keys
+        self.manager.generate_key("key1", expires_in_days=30)
+        self.manager.generate_key("key2", requests_per_hour=100)
+        
+        # Export to temporary file
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.csv') as f:
+            temp_path = f.name
+        
+        try:
+            success = self.manager.export_key_inventory_csv(temp_path)
+            self.assertTrue(success)
+            
+            # Verify file was created and has content
+            self.assertTrue(os.path.exists(temp_path))
+            with open(temp_path, 'r') as f:
+                content = f.read()
+                self.assertIn('key_id', content)
+                self.assertIn('name', content)
+                self.assertIn('key1', content)
+                self.assertIn('key2', content)
+        finally:
+            # Cleanup
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+    
+    def test_list_keys_includes_new_fields(self):
+        """Test that list_keys includes new fields."""
+        key_id, raw_key = self.manager.generate_key(
+            "test_key",
+            requests_per_hour=500
+        )
+        
+        # Use the key once
+        self.manager.validate_key(raw_key)
+        
+        # List keys
+        keys = self.manager.list_keys()
+        self.assertEqual(len(keys), 1)
+        
+        key_info = keys[0]
+        self.assertIn('last_used_at', key_info)
+        self.assertIn('usage_count', key_info)
+        self.assertIn('requests_per_hour', key_info)
+        self.assertEqual(key_info['requests_per_hour'], 500)
+        self.assertEqual(key_info['usage_count'], 1)
 
 
 if __name__ == '__main__':
