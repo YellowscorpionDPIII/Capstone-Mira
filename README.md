@@ -21,10 +21,26 @@ Modular multi-agent AI workflow system for technical program management. Automat
   - Webhook support for external integrations
   - Asynchronous message processing
 
+- **🔒 Enterprise Security**
+  - API Key lifecycle management (create, rotate, revoke, validate)
+  - Multi-layer webhook authentication (IP, secret, signature)
+  - Pluggable storage backends (in-memory, file-based)
+
+- **📊 Observability & Monitoring**
+  - Metrics API (counters, gauges, timers)
+  - Health and readiness endpoints
+  - Dependency health tracking
+
 - **⚙️ Flexible Configuration**
-  - JSON configuration files
-  - Environment variable support
-  - Modular and extensible design
+  - Pydantic-based validation
+  - Feature flags with priorities
+  - JSON and environment variable support
+  - Rate limiting and maintenance mode
+
+- **🛠️ Developer Experience**
+  - CLI tools for testing and validation
+  - Smoke tests for end-to-end verification
+  - Comprehensive documentation and examples
 
 ## 📦 Installation
 
@@ -67,9 +83,37 @@ Run the example:
 python examples/example_usage.py
 ```
 
+## 🛠️ CLI Tools
+
+Mira includes developer-friendly CLI tools for testing and validation:
+
+```bash
+# Generate test API keys
+python -m mira.cli generate-test-key --key-id mykey
+
+# Check application health
+python -m mira.cli check-health
+
+# View metrics
+python -m mira.cli show-metrics
+
+# Test webhooks
+python -m mira.cli test-webhook --url http://localhost:5000 --service github
+
+# Run smoke tests
+python -m mira.cli smoke-test
+```
+
+See [Quick Start: Security](docs/QUICK_START_SECURITY.md) for more CLI examples.
+
 ## 📚 Documentation
 
-See [DOCUMENTATION.md](DOCUMENTATION.md) for comprehensive documentation including:
+### Main Documentation
+- [DOCUMENTATION.md](DOCUMENTATION.md) - Complete API reference and architecture
+- **[Security & Observability Guide](docs/SECURITY_AND_OBSERVABILITY.md)** - ⭐ NEW! Comprehensive guide for security and monitoring
+- **[Quick Start: Security](docs/QUICK_START_SECURITY.md)** - ⭐ NEW! Get started in 5 minutes
+
+### Core Guides
 - Detailed API reference
 - Configuration guide
 - Usage examples
@@ -92,8 +136,14 @@ Additional documentation is available in our [Wiki](docs/wiki/Home.md):
 # Run all tests
 python -m unittest discover mira/tests
 
-# Run specific test module
+# Run specific test modules
 python -m unittest mira.tests.test_agents
+python -m unittest mira.tests.test_security
+python -m unittest mira.tests.test_observability
+python -m unittest mira.tests.test_config
+
+# Run smoke tests
+python -m mira.cli smoke-test
 ```
 
 ## 📁 Project Structure
@@ -116,7 +166,12 @@ Capstone-Mira/
 │   ├── core/                  # Core components
 │   │   ├── base_agent.py
 │   │   ├── message_broker.py
-│   │   └── webhook_handler.py
+│   │   ├── webhook_handler.py
+│   │   ├── api_key_manager.py      # NEW: API key lifecycle
+│   │   ├── webhook_security.py     # NEW: Enhanced webhook auth
+│   │   ├── metrics.py              # NEW: Metrics collection
+│   │   ├── health.py               # NEW: Health checks
+│   │   └── feature_flags.py        # NEW: Configuration
 │   ├── config/                # Configuration
 │   │   └── settings.py
 │   ├── utils/                 # Utilities
