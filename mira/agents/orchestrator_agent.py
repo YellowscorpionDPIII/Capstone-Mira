@@ -10,6 +10,7 @@ This module exposes the following Prometheus metrics for monitoring orchestrator
    - Labels:
      * agent_type: The type/ID of the agent that experienced the timeout (e.g., "plan_generator", "risk_assessor")
    - Purpose: Monitor how often async operations time out and fall back to synchronous mode.
+   - Note: Reserved for future async timeout handling. Currently, agent operations are synchronous.
    - Example usage:
      async_timeout_fallbacks_total.labels(agent_type="plan_generator").inc()
 
@@ -137,24 +138,24 @@ class OrchestratorAgent(BaseAgent):
         
         try:
             if not self.validate_message(message):
+                fallback_mode = "error"
                 return self.create_response('error', None, 'Invalid message format')
                 
-            try:
-                message_type = message['type']
+            message_type = message['type']
+            
+            if message_type == 'workflow':
+                result = self._execute_workflow(message['data'])
+                success = True
+                return result
+            else:
+                result = self._route_message(message)
+                success = result.get('status') == 'success'
+                return result
                 
-                if message_type == 'workflow':
-                    result = self._execute_workflow(message['data'])
-                    success = True
-                    return result
-                else:
-                    result = self._route_message(message)
-                    success = result.get('status') == 'success'
-                    return result
-                    
-            except Exception as e:
-                self.logger.error(f"Error processing message: {e}")
-                fallback_mode = "error"
-                return self.create_response('error', None, str(e))
+        except Exception as e:
+            self.logger.error(f"Error processing message: {e}")
+            fallback_mode = "error"
+            return self.create_response('error', None, str(e))
         finally:
             # Decrement concurrent operations gauge
             current_concurrent_agents.dec()
@@ -204,10 +205,9 @@ class OrchestratorAgent(BaseAgent):
             response = target_agent.process(message)
             success = response.get('status') == 'success'
             return response
-        except asyncio.TimeoutError:
-            # Track timeout fallbacks
-            async_timeout_fallbacks_total.labels(agent_type=target_agent_id).inc()
-            fallback_mode = "async"
+        except Exception as e:
+            # Track any exceptions during agent processing
+            fallback_mode = "error"
             raise
         finally:
             # Record agent-specific processing duration
