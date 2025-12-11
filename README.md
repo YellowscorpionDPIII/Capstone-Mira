@@ -38,6 +38,33 @@ pip install -r requirements.txt
 
 # Or install as a package
 pip install -e .
+
+# For Prometheus metrics support (optional)
+pip install -e .[metrics]
+```
+
+## ⚙️ Configuration
+
+Mira supports configuration via environment variables and configuration files:
+
+### Environment Variables
+
+- `MIRA_AGENT_PROCESS_TIMEOUT` - Timeout for agent processing in seconds (default: 30.0)
+- `MIRA_AGENT_METRICS_ENABLED` - Enable Prometheus metrics collection (default: true)
+- `MIRA_WEBHOOK_ENABLED` - Enable webhook server (default: false)
+- `MIRA_WEBHOOK_PORT` - Webhook server port (default: 5000)
+
+### Prometheus Metrics
+
+When metrics are enabled, Mira exposes the following Prometheus counters:
+
+- `agent_process_timeout_total` - Total number of agent process timeouts
+- `agent_process_fallback_total` - Total number of fallbacks to synchronous execution
+
+Install the optional metrics dependency to enable Prometheus metrics:
+
+```bash
+pip install prometheus-client
 ```
 
 ## 🏃 Quick Start

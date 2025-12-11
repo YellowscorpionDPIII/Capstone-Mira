@@ -13,6 +13,10 @@
     "level": "INFO",
     "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
   },
+  "orchestrator": {
+    "agent_process_timeout": 30.0,
+    "metrics_enabled": true
+  },
   "integrations": {
     "trello": {
       "enabled": false,

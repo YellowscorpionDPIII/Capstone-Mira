@@ -62,6 +62,10 @@ class Config:
                 'level': 'INFO',
                 'format': '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
             },
+            'orchestrator': {
+                'agent_process_timeout': 30.0,
+                'metrics_enabled': True
+            },
             'integrations': {
                 'trello': {
                     'enabled': False,
@@ -117,6 +121,12 @@ class Config:
             self.config_data['webhook']['port'] = int(os.getenv('MIRA_WEBHOOK_PORT'))
         if os.getenv('MIRA_WEBHOOK_SECRET'):
             self.config_data['webhook']['secret_key'] = os.getenv('MIRA_WEBHOOK_SECRET')
+        
+        # Orchestrator config
+        if os.getenv('MIRA_AGENT_PROCESS_TIMEOUT'):
+            self.config_data['orchestrator']['agent_process_timeout'] = float(os.getenv('MIRA_AGENT_PROCESS_TIMEOUT'))
+        if os.getenv('MIRA_AGENT_METRICS_ENABLED'):
+            self.config_data['orchestrator']['metrics_enabled'] = os.getenv('MIRA_AGENT_METRICS_ENABLED') == 'true'
             
         # Integration configs
         integrations = ['trello', 'jira', 'github', 'airtable', 'google_docs']
