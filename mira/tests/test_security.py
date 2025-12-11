@@ -471,3 +471,110 @@ class TestWebhookSecurity(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestConcurrentFailureHandling(unittest.TestCase):
+    """Test concurrent operations with intentional failures."""
+    
+    def test_concurrent_api_key_validation(self):
+        """Test API key validation under concurrent load with failures."""
+        from concurrent.futures import ThreadPoolExecutor
+        import random
+        
+        storage = InMemoryAPIKeyStorage()
+        manager = APIKeyManager(storage, default_expiry_days=90)
+        
+        # Create some valid keys
+        valid_keys = []
+        for i in range(5):
+            api_key, _ = manager.create()
+            valid_keys.append(api_key)
+        
+        def validate_with_random_failures(key_index):
+            """Validate keys with random failures."""
+            try:
+                # Randomly use valid or invalid keys
+                if random.choice([True, False]) and valid_keys:
+                    key = valid_keys[key_index % len(valid_keys)]
+                else:
+                    key = "invalid_key_" + str(random.randint(1000, 9999))
+                
+                # Randomly raise exceptions
+                if random.random() < 0.1:  # 10% failure rate
+                    raise Exception("Simulated failure")
+                
+                is_valid, _, _ = manager.validate(key)
+                return "success" if is_valid else "invalid"
+            except Exception:
+                return "failed"
+        
+        # Run concurrent validations
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            results = list(executor.map(validate_with_random_failures, range(50)))
+        
+        # Verify we got a mix of results
+        self.assertGreater(results.count("failed"), 0, "Should have some failures")
+        self.assertGreater(results.count("success") + results.count("invalid"), 0, "Should have some successes")
+        self.assertEqual(len(results), 50, "Should have all 50 results")
+    
+    def test_concurrent_rate_limiting(self):
+        """Test rate limiting under concurrent load."""
+        from concurrent.futures import ThreadPoolExecutor
+        
+        storage = InMemoryAPIKeyStorage()
+        manager = APIKeyManager(storage, rate_limit=50)
+        
+        api_key, _ = manager.create()
+        
+        def increment_with_handling():
+            """Try to increment usage, handle rate limit errors."""
+            try:
+                manager.increment_usage(api_key)
+                return "success"
+            except Exception as e:
+                if "Rate limit exceeded" in str(e):
+                    return "rate_limited"
+                return "error"
+        
+        # Run concurrent increments (more than rate limit)
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            results = list(executor.map(lambda _: increment_with_handling(), range(100)))
+        
+        # Should have mix of successes and rate limited
+        self.assertGreater(results.count("success"), 0, "Should have some successes")
+        self.assertGreater(results.count("rate_limited"), 0, "Should hit rate limit")
+        self.assertEqual(len(results), 100, "Should have all 100 results")
+    
+    def test_concurrent_webhook_authentication(self):
+        """Test webhook authentication under concurrent load."""
+        from concurrent.futures import ThreadPoolExecutor
+        import random
+        
+        config = WebhookSecurityConfig(
+            require_signature=False,
+            require_ip_whitelist=False
+        )
+        authenticator = WebhookAuthenticator(config)
+        
+        def authenticate_with_random_failures():
+            """Authenticate with random failures."""
+            try:
+                # Randomly raise exceptions
+                if random.random() < 0.05:  # 5% failure rate
+                    raise Exception("Simulated network failure")
+                
+                is_auth, reason = authenticator.authenticate(
+                    client_ip="127.0.0.1",
+                    payload=b"test payload"
+                )
+                return "success" if is_auth else "failed"
+            except Exception:
+                return "error"
+        
+        # Run concurrent authentications
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            results = list(executor.map(lambda _: authenticate_with_random_failures(), range(50)))
+        
+        # Verify we got results
+        self.assertGreater(results.count("success"), 0, "Should have some successes")
+        self.assertEqual(len(results), 50, "Should have all 50 results")
