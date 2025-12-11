@@ -212,7 +212,7 @@ class OrchestratorAgent(BaseAgent):
         self.logger.info(f"Completed workflow: {workflow_type}")
         return results
         
-    def _publish_pending_approval(self, workflow_type: str, governance_assessment: Dict[str, Any], workflow_data: Dict[str, Any]):
+    def _publish_pending_approval(self, workflow_type: str, governance_assessment: Dict[str, Any], workflow_data: Dict[str, Any]) -> None:
         """
         Publish pending approval workflow to message broker for HITL dashboard integration.
         

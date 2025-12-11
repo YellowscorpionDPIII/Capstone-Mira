@@ -213,7 +213,7 @@ class GovernanceAgent(BaseAgent):
         else:
             return assessment_response
             
-    def update_thresholds(self, thresholds: Dict[str, Any]):
+    def update_thresholds(self, thresholds: Dict[str, Any]) -> None:
         """
         Update governance thresholds.
         
