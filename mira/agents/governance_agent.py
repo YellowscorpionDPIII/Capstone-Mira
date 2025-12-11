@@ -1,5 +1,7 @@
 """GovernanceAgent for risk assessment and human-in-the-loop validation."""
 from typing import Dict, Any, Optional
+import os
+import yaml
 from mira.core.base_agent import BaseAgent
 
 # Constants for compliance level mapping defaults
@@ -28,10 +30,17 @@ class GovernanceAgent(BaseAgent):
         """
         super().__init__(agent_id, config)
         
-        # Default thresholds (can be overridden via config)
-        self.financial_threshold = self.config.get('financial_threshold', 10000)
-        self.compliance_threshold = self.config.get('compliance_threshold', 'medium')
-        self.explainability_threshold = self.config.get('explainability_threshold', 0.7)
+        # Load thresholds from YAML config file or use config parameter
+        thresholds = self._load_thresholds_from_yaml()
+        
+        # Override with config parameter if provided
+        if config:
+            thresholds.update(config)
+        
+        # Set thresholds
+        self.financial_threshold = thresholds.get('financial_threshold', 10000)
+        self.compliance_threshold = thresholds.get('compliance_threshold', 'medium')
+        self.explainability_threshold = thresholds.get('explainability_threshold', 0.7)
         
         # Map compliance levels to numeric values for threshold comparison
         # This mapping allows string compliance levels (low, medium, high, critical)
@@ -43,6 +52,31 @@ class GovernanceAgent(BaseAgent):
             'high': 3,
             'critical': 4
         }
+        
+    def _load_thresholds_from_yaml(self) -> Dict[str, Any]:
+        """
+        Load governance thresholds from YAML configuration file.
+        
+        Returns:
+            Dictionary with threshold values, or empty dict if file not found
+        """
+        config_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+            'config',
+            'governance_config.yaml'
+        )
+        
+        try:
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    config_data = yaml.safe_load(f)
+                    if config_data and 'thresholds' in config_data:
+                        self.logger.info(f"Loaded thresholds from {config_path}")
+                        return config_data['thresholds']
+        except Exception as e:
+            self.logger.warning(f"Failed to load YAML config from {config_path}: {e}")
+        
+        return {}
         
     def process(self, message: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -82,6 +116,7 @@ class GovernanceAgent(BaseAgent):
         Returns:
             Governance assessment with risk level and validation requirements
         """
+        workflow_id = data.get('workflow_id', 'unknown')
         assessment = {
             'financial_impact': data.get('financial_impact', 0),
             'compliance_level': data.get('compliance_level', 'low'),
@@ -127,10 +162,30 @@ class GovernanceAgent(BaseAgent):
                 f"Explainability score {assessment['explainability_score']:.2f} below threshold {self.explainability_threshold}"
             )
             
-        self.logger.info(
-            f"Governance assessment: risk_level={assessment['risk_level']}, "
-            f"requires_human_validation={assessment['requires_human_validation']}"
-        )
+        # Structured logging for governance assessment
+        if assessment['risk_level'] == 'high' or assessment['requires_human_validation']:
+            risk_details = {
+                'workflow_id': workflow_id,
+                'risk_level': assessment['risk_level'],
+                'financial_impact': assessment['financial_impact'],
+                'compliance_level': assessment['compliance_level'],
+                'explainability_score': assessment['explainability_score'],
+                'requires_human_validation': assessment['requires_human_validation'],
+                'reasons': assessment['reasons']
+            }
+            self.logger.warning(
+                f"High risk workflow {workflow_id}: risk_level={assessment['risk_level']}, "
+                f"financial_impact=${assessment['financial_impact']}, "
+                f"compliance_level={assessment['compliance_level']}, "
+                f"explainability_score={assessment['explainability_score']:.2f}, "
+                f"reasons={assessment['reasons']}"
+            )
+        else:
+            self.logger.info(
+                f"Governance assessment for workflow {workflow_id}: "
+                f"risk_level={assessment['risk_level']}, "
+                f"requires_human_validation={assessment['requires_human_validation']}"
+            )
         
         return self.create_response('success', assessment)
         
