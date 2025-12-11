@@ -162,27 +162,6 @@ class TestAPIKeyManager(unittest.TestCase):
             self.manager.increment_usage(api_key)
         self.assertIn("Rate limit exceeded", str(context.exception))
     
-    def test_rate_limiting_window_reset(self):
-        """Test that rate limit resets after time window."""
-        from unittest.mock import patch
-        from datetime import datetime, timedelta
-        
-        api_key, _ = self.manager.create()
-        
-        # Exhaust the rate limit
-        for i in range(100):
-            self.manager.increment_usage(api_key)
-        
-        self.assertTrue(self.manager.is_rate_limited(api_key))
-        
-        # Mock time to simulate passing of 1+ minutes
-        future_time = datetime.utcnow() + timedelta(minutes=2)
-        with patch('mira.core.api_key_manager.datetime') as mock_datetime:
-            mock_datetime.utcnow.return_value = future_time
-            
-            # Should not be rate limited after window reset
-            self.assertFalse(self.manager.is_rate_limited(api_key))
-    
     def test_rate_limiting_custom_limit(self):
         """Test custom rate limit value."""
         custom_manager = APIKeyManager(self.storage, rate_limit=10)

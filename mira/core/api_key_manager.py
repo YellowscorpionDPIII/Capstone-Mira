@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, List
 from datetime import datetime, timedelta
 from collections import defaultdict
+import threading
 import secrets
 import hashlib
 import json
@@ -215,6 +216,7 @@ class APIKeyManager:
         self.api_key_usage: Dict[str, Dict[str, Any]] = defaultdict(
             lambda: {"count": 0, "window_start": datetime.utcnow()}
         )
+        self._rate_limit_lock = threading.Lock()
     
     def _generate_key(self) -> str:
         """Generate a secure random API key."""
@@ -395,15 +397,16 @@ class APIKeyManager:
         Returns:
             True if the key has exceeded the rate limit
         """
-        usage = self.api_key_usage[api_key]
-        now = datetime.utcnow()
-        
-        # Reset counter if we're in a new time window (1 minute)
-        if now - usage["window_start"] > timedelta(minutes=1):
-            usage["count"] = 0
-            usage["window_start"] = now
-        
-        return usage["count"] >= self.rate_limit
+        with self._rate_limit_lock:
+            usage = self.api_key_usage[api_key]
+            now = datetime.utcnow()
+            
+            # Reset counter if we're in a new time window (1 minute)
+            if now - usage["window_start"] > timedelta(minutes=1):
+                usage["count"] = 0
+                usage["window_start"] = now
+            
+            return usage["count"] >= self.rate_limit
     
     def increment_usage(self, api_key: str) -> None:
         """
@@ -415,10 +418,20 @@ class APIKeyManager:
         Raises:
             Exception: If the API key has exceeded its rate limit
         """
-        if self.is_rate_limited(api_key):
-            raise Exception("Rate limit exceeded")
-        
-        self.api_key_usage[api_key]["count"] += 1
+        with self._rate_limit_lock:
+            usage = self.api_key_usage[api_key]
+            now = datetime.utcnow()
+            
+            # Reset counter if we're in a new time window (1 minute)
+            if now - usage["window_start"] > timedelta(minutes=1):
+                usage["count"] = 0
+                usage["window_start"] = now
+            
+            # Check if rate limited
+            if usage["count"] >= self.rate_limit:
+                raise Exception("Rate limit exceeded")
+            
+            usage["count"] += 1
     
     def get_key_info(self, key_id: str) -> Optional[Dict[str, Any]]:
         """

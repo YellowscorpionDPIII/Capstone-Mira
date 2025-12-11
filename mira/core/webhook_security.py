@@ -5,7 +5,7 @@ import hmac
 import hashlib
 import ipaddress
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class AuthFailureReason(Enum):
@@ -133,12 +133,14 @@ class WebhookAuthenticator:
         """
         try:
             ts = datetime.fromisoformat(timestamp)
-            # Get current time with the same timezone as the provided timestamp
-            # If timestamp is naive (no timezone), use naive current time
+            # Normalize to UTC for consistent comparison
             if ts.tzinfo is None:
+                # Assume naive timestamps are UTC
                 now = datetime.utcnow()
             else:
-                now = datetime.now(ts.tzinfo)
+                # Convert timezone-aware timestamp to UTC
+                ts = ts.astimezone(timezone.utc).replace(tzinfo=None)
+                now = datetime.utcnow()
             
             age_seconds = (now - ts).total_seconds()
             return age_seconds >= 0 and age_seconds < self.timestamp_window_seconds
