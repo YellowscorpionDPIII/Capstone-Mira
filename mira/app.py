@@ -68,12 +68,17 @@ class MiraApplication:
     def _initialize_webhook_handler(self):
         """Initialize webhook handler for external integrations."""
         secret_key = self.config.get('webhook.secret_key')
-        self.webhook_handler = WebhookHandler(secret_key=secret_key)
+        rate_limit_enabled = self.config.get('webhook.rate_limit_enabled', True)
+        self.webhook_handler = WebhookHandler(
+            secret_key=secret_key,
+            rate_limit_enabled=rate_limit_enabled
+        )
         
         # Register webhook handlers for each integration
         self.webhook_handler.register_handler('github', self._handle_github_webhook)
         self.webhook_handler.register_handler('trello', self._handle_trello_webhook)
         self.webhook_handler.register_handler('jira', self._handle_jira_webhook)
+        self.webhook_handler.register_handler('n8n', self._handle_n8n_webhook)
         
     def _handle_github_webhook(self, data: dict) -> dict:
         """Handle GitHub webhook events."""
@@ -89,6 +94,25 @@ class MiraApplication:
         """Handle Jira webhook events."""
         # Process Jira events and route to appropriate agents
         return {'status': 'processed', 'service': 'jira'}
+    
+    def _handle_n8n_webhook(self, data: dict) -> dict:
+        """
+        Handle n8n workflow webhook events.
+        
+        Processes incoming n8n workflow triggers and routes to appropriate agents.
+        """
+        # Process n8n events and route to appropriate agents
+        workflow_type = data.get('workflow_type', 'unknown')
+        self.logger.info(f"Processing n8n workflow: {workflow_type}")
+        
+        # Route to orchestrator for workflow execution
+        if workflow_type == 'project_initialization':
+            return self.orchestrator.process({
+                'type': 'workflow',
+                'data': data
+            })
+        
+        return {'status': 'processed', 'service': 'n8n', 'workflow_type': workflow_type}
         
     def start(self):
         """Start the Mira application."""
