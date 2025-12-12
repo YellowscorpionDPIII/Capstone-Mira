@@ -7,7 +7,13 @@
     "enabled": false,
     "host": "0.0.0.0",
     "port": 5000,
-    "secret_key": null
+    "secret_key": null,
+    "use_authentication": true
+  },
+  "api_keys": {
+    "enabled": true,
+    "default_expiry_days": 90,
+    "storage_backend": "airtable"
   },
   "logging": {
     "level": "INFO",
