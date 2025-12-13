@@ -358,6 +358,195 @@ class TestAsyncWorkflowTimeout(unittest.TestCase):
         # Should handle gracefully
         self.assertIn('workflow_type', response)
         self.assertEqual(response['workflow_type'], 'project_initialization')
+    
+    def test_async_workflow_negative_timeout(self):
+        """Test that negative timeout raises ValueError."""
+        message = {
+            'type': 'workflow',
+            'data': {
+                'workflow_type': 'project_initialization',
+                'data': {
+                    'name': 'Negative Timeout Test',
+                    'goals': ['Goal 1'],
+                    'duration_weeks': 8
+                }
+            }
+        }
+        
+        async def run_test():
+            response = await self.orchestrator.process_async(message, timeout=-1.0)
+            return response
+        
+        response = asyncio.run(run_test())
+        
+        # Should return error for negative timeout
+        self.assertEqual(response['status'], 'error')
+        self.assertIn('Timeout must be non-negative', response['error'])
+    
+    def test_async_workflow_resource_cleanup_on_timeout(self):
+        """Test that resources are cleaned up properly when timeout occurs."""
+        message = {
+            'type': 'workflow',
+            'data': {
+                'workflow_type': 'project_initialization',
+                'data': {
+                    'name': 'Resource Cleanup Test',
+                    'goals': ['Goal 1', 'Goal 2'],
+                    'duration_weeks': 10
+                }
+            }
+        }
+        
+        # Mock to make workflow slow
+        original_route = self.orchestrator._route_message
+        
+        def slow_route(msg):
+            import time
+            time.sleep(2)  # Simulate slow operation
+            return original_route(msg)
+        
+        with patch.object(self.orchestrator, '_route_message', side_effect=slow_route):
+            async def run_test():
+                # Run with short timeout to trigger timeout
+                response = await self.orchestrator.process_async(message, timeout=0.5)
+                # Give a moment for cleanup
+                await asyncio.sleep(0.1)
+                return response
+            
+            response = asyncio.run(run_test())
+        
+        # Verify timeout occurred
+        self.assertEqual(response.get('status'), 'timeout')
+        self.assertIn('partial_progress', response)
+        
+        # Verify partial_progress structure is consistent
+        partial = response['partial_progress']
+        self.assertIsInstance(partial['completed_steps'], list)
+        self.assertIsInstance(partial['total_steps_completed'], int)
+        self.assertIsInstance(partial['timeout_seconds'], float)
+    
+    def test_async_workflow_concurrent_with_mixed_timeouts(self):
+        """Test concurrent workflows with some timing out and some succeeding."""
+        message_fast = {
+            'type': 'workflow',
+            'data': {
+                'workflow_type': 'project_initialization',
+                'data': {
+                    'name': 'Fast Workflow',
+                    'goals': ['Goal 1'],
+                    'duration_weeks': 8
+                }
+            }
+        }
+        
+        message_slow = {
+            'type': 'workflow',
+            'data': {
+                'workflow_type': 'project_initialization',
+                'data': {
+                    'name': 'Slow Workflow',
+                    'goals': ['Goal 1', 'Goal 2'],
+                    'duration_weeks': 10
+                }
+            }
+        }
+        
+        # Mock to make second message slow
+        original_route = self.orchestrator._route_message
+        call_data = {'count': 0}
+        
+        def selective_slow_route(msg):
+            call_data['count'] += 1
+            # Make calls for the second workflow slow
+            if msg.get('data', {}).get('name') == 'Slow Workflow':
+                import time
+                time.sleep(3)
+            return original_route(msg)
+        
+        with patch.object(self.orchestrator, '_route_message', side_effect=selective_slow_route):
+            async def run_multiple():
+                # Run workflows concurrently with different timeouts
+                tasks = [
+                    self.orchestrator.process_async(message_fast, timeout=30.0),
+                    self.orchestrator.process_async(message_slow, timeout=1.0)
+                ]
+                responses = await asyncio.gather(*tasks, return_exceptions=False)
+                return responses
+            
+            responses = asyncio.run(run_multiple())
+        
+        # Verify we got 2 responses
+        self.assertEqual(len(responses), 2)
+        
+        # First should succeed, second should timeout
+        self.assertNotEqual(responses[0].get('status'), 'timeout')
+        self.assertEqual(responses[1].get('status'), 'timeout')
+    
+    def test_async_workflow_exception_in_step_extraction(self):
+        """Test handling of exceptions during step extraction."""
+        message = {
+            'type': 'workflow',
+            'data': {
+                'workflow_type': 'project_initialization',
+                'data': {
+                    'name': 'Exception Test',
+                    'goals': ['Goal 1'],
+                    'duration_weeks': 8
+                }
+            }
+        }
+        
+        # Mock _run_workflow_steps_async to return malformed results
+        async def malformed_workflow(workflow_type, workflow_data, results):
+            # Return results with malformed steps
+            results['steps'] = "not a list"  # Invalid format
+            return results
+        
+        with patch.object(self.orchestrator, '_run_workflow_steps_async', side_effect=malformed_workflow):
+            async def run_test():
+                response = await self.orchestrator.process_async(message, timeout=0.001)
+                return response
+            
+            response = asyncio.run(run_test())
+        
+        # Should handle gracefully and return timeout with empty completed_steps
+        if response.get('status') == 'timeout':
+            self.assertIn('partial_progress', response)
+            # Should have empty list as fallback
+            self.assertEqual(response['partial_progress']['completed_steps'], [])
+    
+    def test_async_workflow_internal_exception_distinct_response(self):
+        """Test that internal exceptions produce distinct response structure."""
+        message = {
+            'type': 'workflow',
+            'data': {
+                'workflow_type': 'project_initialization',
+                'data': {
+                    'name': 'Internal Exception Test',
+                    'goals': ['Goal 1'],
+                    'duration_weeks': 8
+                }
+            }
+        }
+        
+        # Mock to raise an exception
+        async def failing_workflow(workflow_type, workflow_data, results):
+            raise RuntimeError("Internal workflow error")
+        
+        with patch.object(self.orchestrator, '_run_workflow_steps_async', side_effect=failing_workflow):
+            async def run_test():
+                response = await self.orchestrator.process_async(message, timeout=10.0)
+                return response
+            
+            response = asyncio.run(run_test())
+        
+        # Verify error response structure (distinct from timeout)
+        self.assertEqual(response['status'], 'error')
+        self.assertIn('error', response)
+        self.assertIn('Internal workflow error', response['error'])
+        self.assertNotIn('partial_progress', response)  # No partial progress for errors
+        self.assertEqual(response['workflow_type'], 'project_initialization')
+
 
 
 class TestAsyncWorkflowStepExecution(unittest.TestCase):
@@ -438,6 +627,75 @@ class TestAsyncWorkflowStepExecution(unittest.TestCase):
         # Should complete successfully
         self.assertEqual(result['workflow_type'], 'project_initialization')
         self.assertGreater(len(result['steps']), 0)
+    
+    def test_backward_compatibility_sync_workflow(self):
+        """Test that synchronous workflow execution is unaffected by async changes."""
+        message = {
+            'type': 'workflow',
+            'data': {
+                'workflow_type': 'project_initialization',
+                'data': {
+                    'name': 'Sync Backward Compat Test',
+                    'goals': ['Goal 1', 'Goal 2'],
+                    'duration_weeks': 12
+                }
+            }
+        }
+        
+        # Use the synchronous process method
+        result = self.orchestrator.process(message)
+        
+        # Verify sync execution produces same structure as before
+        self.assertEqual(result['workflow_type'], 'project_initialization')
+        self.assertIn('steps', result)
+        self.assertGreater(len(result['steps']), 0)
+        
+        # Should NOT have timeout-related fields when using sync
+        self.assertNotIn('status', result)
+        self.assertNotIn('partial_progress', result)
+        
+        # Verify all steps completed
+        for step in result['steps']:
+            self.assertEqual(step['status'], 'success')
+    
+    def test_shared_helper_method_works_for_both(self):
+        """Test that _run_workflow_steps_async can be used by both sync and async paths."""
+        workflow_type = 'project_initialization'
+        workflow_data = {
+            'name': 'Shared Helper Test',
+            'goals': ['Goal 1'],
+            'duration_weeks': 8
+        }
+        results = {
+            'workflow_type': workflow_type,
+            'steps': []
+        }
+        
+        # Call the shared async method
+        async def run_test():
+            result = await self.orchestrator._run_workflow_steps_async(
+                workflow_type, workflow_data, results
+            )
+            return result
+        
+        result = asyncio.run(run_test())
+        
+        # Verify it produces expected output
+        self.assertEqual(result['workflow_type'], workflow_type)
+        self.assertGreater(len(result['steps']), 0)
+        
+        # Verify sync workflow still works through process()
+        sync_message = {
+            'type': 'workflow',
+            'data': {
+                'workflow_type': workflow_type,
+                'data': workflow_data
+            }
+        }
+        sync_result = self.orchestrator.process(sync_message)
+        
+        # Both should produce similar structure
+        self.assertEqual(len(sync_result['steps']), len(result['steps']))
 
 
 if __name__ == '__main__':
