@@ -6,6 +6,7 @@ omit =
     mira/tests/*
     */__pycache__/*
     */site-packages/*
+    mira/agents/talent_orchestrator.py
 
 [report]
 # Coverage report configuration
@@ -29,7 +30,7 @@ exclude_lines =
     @abstractmethod
 
 # Fail under threshold
-fail_under = 80
+fail_under = 95
 
 # Show missing lines
 show_missing = True

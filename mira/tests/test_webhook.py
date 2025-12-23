@@ -1,0 +1,219 @@
+"""Tests for webhook handler functionality."""
+import unittest
+import json
+import os
+import tempfile
+from mira.core.webhook_handler import WebhookHandler
+
+
+class TestWebhookHandler(unittest.TestCase):
+    """Test cases for WebhookHandler."""
+    
+    def setUp(self):
+        """Set up test fixtures."""
+        self.handler = WebhookHandler(secret_key='test-secret')
+        self.test_data = {'test': 'data', 'value': 123}
+        
+    def test_handler_initialization(self):
+        """Test webhook handler initialization."""
+        self.assertIsNotNone(self.handler.app)
+        self.assertEqual(self.handler.secret_key, 'test-secret')
+        self.assertIsInstance(self.handler.handlers, dict)
+        self.assertIsInstance(self.handler.operator_keys, set)
+        
+    def test_generate_operator_key(self):
+        """Test operator key generation."""
+        key = self.handler.generate_operator_key()
+        self.assertTrue(key.startswith('op_'))
+        self.assertEqual(len(key), 35)  # 'op_' + 32 hex chars
+        self.assertIn(key, self.handler.operator_keys)
+        
+    def test_verify_operator_key_valid(self):
+        """Test verification of valid operator key."""
+        key = self.handler.generate_operator_key()
+        self.assertTrue(self.handler._verify_operator_key(key))
+        
+    def test_verify_operator_key_invalid(self):
+        """Test verification of invalid operator key."""
+        self.assertFalse(self.handler._verify_operator_key('invalid-key'))
+        
+    def test_register_handler(self):
+        """Test registering a webhook handler."""
+        def test_handler(data):
+            return {'status': 'ok', 'data': data}
+            
+        self.handler.register_handler('test_service', test_handler)
+        self.assertIn('test_service', self.handler.handlers)
+        self.assertEqual(self.handler.handlers['test_service'], test_handler)
+        
+    def test_webhook_with_valid_operator_key(self):
+        """Test webhook endpoint with valid operator key."""
+        def mock_handler(data):
+            return {'status': 'processed', 'data': data}
+            
+        self.handler.register_handler('test', mock_handler)
+        key = self.handler.generate_operator_key()
+        
+        with self.handler.app.test_client() as client:
+            response = client.post(
+                '/webhook/test',
+                json=self.test_data,
+                headers={'X-Operator-Key': key}
+            )
+            self.assertEqual(response.status_code, 200)
+            data = json.loads(response.data)
+            self.assertEqual(data['status'], 'processed')
+            
+    def test_webhook_with_invalid_operator_key(self):
+        """Test webhook endpoint with invalid operator key."""
+        def mock_handler(data):
+            return {'status': 'processed'}
+            
+        self.handler.register_handler('test', mock_handler)
+        
+        with self.handler.app.test_client() as client:
+            response = client.post(
+                '/webhook/test',
+                json=self.test_data,
+                headers={'X-Operator-Key': 'invalid-key'}
+            )
+            self.assertEqual(response.status_code, 403)
+            data = json.loads(response.data)
+            self.assertIn('error', data)
+            
+    def test_webhook_without_operator_key(self):
+        """Test webhook endpoint without operator key."""
+        def mock_handler(data):
+            return {'status': 'processed'}
+            
+        self.handler.register_handler('test', mock_handler)
+        
+        with self.handler.app.test_client() as client:
+            response = client.post(
+                '/webhook/test',
+                json=self.test_data
+            )
+            self.assertEqual(response.status_code, 200)
+            
+    def test_webhook_unknown_service(self):
+        """Test webhook with unknown service."""
+        key = self.handler.generate_operator_key()
+        
+        with self.handler.app.test_client() as client:
+            response = client.post(
+                '/webhook/unknown',
+                json=self.test_data,
+                headers={'X-Operator-Key': key}
+            )
+            self.assertEqual(response.status_code, 404)
+            data = json.loads(response.data)
+            self.assertIn('error', data)
+            
+    def test_webhook_with_signature_verification(self):
+        """Test webhook with signature verification."""
+        import hmac
+        import hashlib
+        
+        def mock_handler(data):
+            return {'status': 'processed'}
+            
+        self.handler.register_handler('test', mock_handler)
+        payload = json.dumps(self.test_data).encode()
+        signature = 'sha256=' + hmac.new(
+            b'test-secret',
+            payload,
+            hashlib.sha256
+        ).hexdigest()
+        
+        with self.handler.app.test_client() as client:
+            response = client.post(
+                '/webhook/test',
+                data=payload,
+                content_type='application/json',
+                headers={'X-Hub-Signature-256': signature}
+            )
+            self.assertEqual(response.status_code, 200)
+            
+    def test_webhook_with_invalid_signature(self):
+        """Test webhook with invalid signature."""
+        def mock_handler(data):
+            return {'status': 'processed'}
+            
+        self.handler.register_handler('test', mock_handler)
+        payload = json.dumps(self.test_data).encode()
+        
+        with self.handler.app.test_client() as client:
+            response = client.post(
+                '/webhook/test',
+                data=payload,
+                content_type='application/json',
+                headers={'X-Hub-Signature-256': 'sha256=invalid'}
+            )
+            self.assertEqual(response.status_code, 403)
+            
+    def test_health_check_endpoint(self):
+        """Test health check endpoint."""
+        with self.handler.app.test_client() as client:
+            response = client.get('/health')
+            self.assertEqual(response.status_code, 200)
+            data = json.loads(response.data)
+            self.assertEqual(data['status'], 'healthy')
+            self.assertEqual(data['service'], 'mira-webhook')
+            
+    def test_webhook_handler_exception(self):
+        """Test webhook handler with exception."""
+        def failing_handler(data):
+            raise ValueError("Test error")
+            
+        self.handler.register_handler('test', failing_handler)
+        key = self.handler.generate_operator_key()
+        
+        with self.handler.app.test_client() as client:
+            response = client.post(
+                '/webhook/test',
+                json=self.test_data,
+                headers={'X-Operator-Key': key}
+            )
+            self.assertEqual(response.status_code, 500)
+            data = json.loads(response.data)
+            self.assertIn('error', data)
+            
+    def test_load_operator_keys_from_env(self):
+        """Test loading operator keys from environment."""
+        os.environ['OPERATOR_KEYS'] = 'key1,key2,key3'
+        handler = WebhookHandler()
+        self.assertIn('key1', handler.operator_keys)
+        self.assertIn('key2', handler.operator_keys)
+        self.assertIn('key3', handler.operator_keys)
+        del os.environ['OPERATOR_KEYS']
+        
+    def test_load_operator_keys_from_file(self):
+        """Test loading operator keys from file."""
+        import tempfile
+        
+        # Create a temporary file and set it via environment variable
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt') as f:
+            temp_keys_file = f.name
+            f.write('file_key1\n')
+            f.write('file_key2\n')
+            f.write('# This is a comment\n')
+            f.write('file_key3\n')
+        
+        try:
+            # Set environment variable to point to temp file
+            os.environ['OPERATOR_KEYS_FILE'] = temp_keys_file
+            handler = WebhookHandler()
+            
+            self.assertIn('file_key1', handler.operator_keys)
+            self.assertIn('file_key2', handler.operator_keys)
+            self.assertIn('file_key3', handler.operator_keys)
+        finally:
+            # Cleanup
+            if 'OPERATOR_KEYS_FILE' in os.environ:
+                del os.environ['OPERATOR_KEYS_FILE']
+            if os.path.exists(temp_keys_file):
+                os.remove(temp_keys_file)
+
+
+if __name__ == '__main__':
+    unittest.main()
