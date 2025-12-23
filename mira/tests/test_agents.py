@@ -653,6 +653,81 @@ class TestOrchestratorAgent(unittest.TestCase):
         # Should return empty steps for unknown workflow type
         self.assertEqual(response['workflow_type'], 'unknown_workflow')
         self.assertEqual(len(response['steps']), 0)
+    
+    def test_metrics_concurrent_agents_gauge(self):
+        """Test that concurrent agents gauge is properly managed."""
+        # Process a message and verify no exceptions are raised
+        message = {
+            'type': 'generate_plan',
+            'data': {
+                'name': 'Test Project',
+                'goals': ['Goal 1'],
+                'duration_weeks': 8
+            }
+        }
+        
+        response = self.orchestrator.process(message)
+        self.assertEqual(response['status'], 'success')
+        
+        # Verify gauge is working by checking metrics output
+        from prometheus_client import generate_latest
+        metrics_output = generate_latest().decode('utf-8')
+        self.assertIn('current_concurrent_agents', metrics_output)
+    
+    def test_metrics_agent_process_duration_recorded(self):
+        """Test that agent process duration is recorded in histogram."""
+        # Process a message
+        message = {
+            'type': 'generate_plan',
+            'data': {
+                'name': 'Test Project',
+                'goals': ['Goal 1'],
+                'duration_weeks': 8
+            }
+        }
+        
+        response = self.orchestrator.process(message)
+        self.assertEqual(response['status'], 'success')
+        
+        # Verify duration was recorded by checking metrics output
+        from prometheus_client import generate_latest
+        metrics_output = generate_latest().decode('utf-8')
+        
+        self.assertIn('agent_process_duration_seconds', metrics_output)
+        self.assertIn('plan_generator', metrics_output)
+    
+    def test_metrics_get_agent_type_mapping(self):
+        """Test agent type mapping for metrics."""
+        self.assertEqual(
+            self.orchestrator._get_agent_type('project_plan_agent'),
+            'plan_generator'
+        )
+        self.assertEqual(
+            self.orchestrator._get_agent_type('risk_assessment_agent'),
+            'risk_assessor'
+        )
+        self.assertEqual(
+            self.orchestrator._get_agent_type('status_reporter_agent'),
+            'status_reporter'
+        )
+        self.assertEqual(
+            self.orchestrator._get_agent_type('roadmapping_agent'),
+            'roadmapper'
+        )
+        # Unknown agent ID should return the ID itself
+        self.assertEqual(
+            self.orchestrator._get_agent_type('unknown_agent'),
+            'unknown_agent'
+        )
+    
+    def test_metrics_timeout_config(self):
+        """Test that agent timeout can be configured."""
+        config = {'agent_timeout': 60}
+        orchestrator = OrchestratorAgent(agent_id='timeout_orchestrator', config=config)
+        orchestrator.register_agent(ProjectPlanAgent())
+        
+        # The timeout value should be used in _route_message
+        self.assertEqual(orchestrator.config.get('agent_timeout'), 60)
 
 
 # ============================================================================

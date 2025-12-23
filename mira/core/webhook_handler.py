@@ -1,6 +1,7 @@
 """Webhook handler for external integrations."""
 from typing import Dict, Any, Callable, Optional
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 import logging
 import hmac
 import hashlib
@@ -51,6 +52,15 @@ class WebhookHandler:
             except Exception as e:
                 self.logger.error(f"Error handling webhook: {e}")
                 return jsonify({'error': 'Internal server error'}), 500
+        
+        @self.app.route('/metrics', methods=['GET'])
+        def metrics():
+            """Expose Prometheus metrics endpoint."""
+            try:
+                return Response(generate_latest(), mimetype=CONTENT_TYPE_LATEST)
+            except Exception as e:
+                self.logger.error(f"Error generating metrics: {e}")
+                return jsonify({'error': 'Failed to generate metrics'}), 500
                 
     def _verify_signature(self, payload: bytes, signature: str) -> bool:
         """
