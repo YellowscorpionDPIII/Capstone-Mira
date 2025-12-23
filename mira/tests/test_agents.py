@@ -653,6 +653,45 @@ class TestOrchestratorAgent(unittest.TestCase):
         # Should return empty steps for unknown workflow type
         self.assertEqual(response['workflow_type'], 'unknown_workflow')
         self.assertEqual(len(response['steps']), 0)
+    
+    def test_process_timeout_default_value(self):
+        """Test that OrchestratorAgent has default timeout of 30.0 seconds."""
+        orchestrator = OrchestratorAgent()
+        self.assertEqual(orchestrator.process_timeout, 30.0)
+    
+    def test_process_timeout_custom_value(self):
+        """Test that OrchestratorAgent accepts custom timeout value."""
+        custom_timeout = 60.0
+        orchestrator = OrchestratorAgent(process_timeout=custom_timeout)
+        self.assertEqual(orchestrator.process_timeout, custom_timeout)
+    
+    def test_run_async_with_fallback_success(self):
+        """Test _run_async_with_fallback with successful operation."""
+        import asyncio
+        
+        orchestrator = OrchestratorAgent(process_timeout=5.0)
+        
+        async def quick_operation():
+            await asyncio.sleep(0.1)
+            return "success"
+        
+        # Run the async method
+        result = asyncio.run(orchestrator._run_async_with_fallback(quick_operation()))
+        self.assertEqual(result, "success")
+    
+    def test_run_async_with_fallback_timeout(self):
+        """Test _run_async_with_fallback raises TimeoutError on timeout."""
+        import asyncio
+        
+        orchestrator = OrchestratorAgent(process_timeout=0.5)
+        
+        async def slow_operation():
+            await asyncio.sleep(2.0)
+            return "should_timeout"
+        
+        # Should raise TimeoutError
+        with self.assertRaises(asyncio.TimeoutError):
+            asyncio.run(orchestrator._run_async_with_fallback(slow_operation()))
 
 
 # ============================================================================
