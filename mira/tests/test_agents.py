@@ -505,6 +505,42 @@ class TestOrchestratorAgent(unittest.TestCase):
         response = self.orchestrator.process(message)
         self.assertEqual(response['status'], 'success')
     
+    def test_log_message_format_consistency(self):
+        """Test that log messages contain message_type for consistency."""
+        import logging
+        from unittest.mock import patch
+        
+        # Mock the logger's info method to capture the call
+        with patch.object(self.orchestrator.logger, 'info') as mock_log:
+            message = {
+                'type': 'generate_plan',
+                'data': {
+                    'name': 'Test Project',
+                    'goals': ['Goal 1'],
+                    'duration_weeks': 8
+                }
+            }
+            
+            response = self.orchestrator.process(message)
+            
+            # Verify the response is successful
+            self.assertEqual(response['status'], 'success')
+            
+            # Verify log was called with message_type in extra dict
+            mock_log.assert_called()
+            
+            # Check that at least one call contains message_type='generate_plan'
+            found_message_type = False
+            for call in mock_log.call_args_list:
+                args, kwargs = call
+                if 'extra' in kwargs and 'message_type' in kwargs['extra']:
+                    # Assert that the log contains message_type='generate_plan' for consistency verification
+                    self.assertEqual(kwargs['extra']['message_type'], 'generate_plan')
+                    found_message_type = True
+                    break
+            
+            self.assertTrue(found_message_type, "Expected log call with message_type='generate_plan' not found")
+    
     def test_route_to_roadmapping_agent(self):
         """Test routing to roadmapping agent."""
         message = {
@@ -653,6 +689,181 @@ class TestOrchestratorAgent(unittest.TestCase):
         # Should return empty steps for unknown workflow type
         self.assertEqual(response['workflow_type'], 'unknown_workflow')
         self.assertEqual(len(response['steps']), 0)
+    
+    def test_configurable_timeout_from_config(self):
+        """Test that orchestrator uses configurable timeout from settings."""
+        from mira.config.settings import get_config
+        import os
+        
+        # Set environment variable for timeout
+        os.environ['MIRA_AGENT_PROCESS_TIMEOUT'] = '45.0'
+        
+        # Create a fresh config instance by resetting singleton
+        import mira.config.settings as settings_module
+        settings_module._config_instance = None
+        
+        # Create new orchestrator which will load the new config
+        orchestrator = OrchestratorAgent()
+        
+        # Verify timeout is set from config
+        self.assertEqual(orchestrator._timeout, 45.0)
+        
+        # Clean up
+        del os.environ['MIRA_AGENT_PROCESS_TIMEOUT']
+        settings_module._config_instance = None
+    
+    def test_metrics_tracking_on_timeout(self):
+        """Test that metrics are incremented when timeout occurs."""
+        from unittest.mock import patch, MagicMock
+        import asyncio
+        
+        # Mock the metrics
+        mock_metrics = MagicMock()
+        self.orchestrator._metrics = mock_metrics
+        
+        # Create a slow function that will timeout
+        def slow_process(*args, **kwargs):
+            time.sleep(2)
+            return {'status': 'success', 'data': None}
+        
+        # Set a very short timeout to trigger timeout
+        self.orchestrator._timeout = 0.1
+        
+        # Execute with timeout
+        with patch.object(asyncio, 'wait_for', side_effect=asyncio.TimeoutError()):
+            # The fallback will still succeed
+            response = self.orchestrator._run_async_with_fallback(slow_process)
+        
+        # Verify timeout metric was incremented
+        mock_metrics.increment_timeout.assert_called_once()
+        # Verify fallback metric was incremented with 'timeout' reason
+        mock_metrics.increment_fallback.assert_called_once()
+        args, kwargs = mock_metrics.increment_fallback.call_args
+        # Check that 'timeout' is one of the arguments
+        self.assertIn('timeout', args)
+    
+    def test_metrics_tracking_on_error_fallback(self):
+        """Test that metrics are incremented when async execution fails."""
+        from unittest.mock import patch, MagicMock
+        
+        # Mock the metrics
+        mock_metrics = MagicMock()
+        self.orchestrator._metrics = mock_metrics
+        
+        # Create a function that will succeed synchronously
+        def test_process(*args, **kwargs):
+            return {'status': 'success', 'data': None}
+        
+        # Simulate async execution failure by mocking asyncio.new_event_loop
+        with patch('asyncio.new_event_loop', side_effect=Exception('Event loop error')):
+            response = self.orchestrator._run_async_with_fallback(test_process)
+        
+        # Verify fallback metric was incremented with 'error' reason
+        mock_metrics.increment_fallback.assert_called_once()
+        args, kwargs = mock_metrics.increment_fallback.call_args
+        # Check that 'error' is one of the arguments
+        self.assertIn('error', args)
+    
+    def test_logger_exception_called_on_async_failure(self):
+        """Test that logger.exception is called for root cause analysis on async failure."""
+        from unittest.mock import patch
+        
+        # Mock logger.exception to verify it's called
+        with patch.object(self.orchestrator.logger, 'exception') as mock_exception:
+            # Create a function that succeeds
+            def test_process(*args, **kwargs):
+                return {'status': 'success', 'data': None}
+            
+            # Simulate async execution failure
+            with patch('asyncio.new_event_loop', side_effect=Exception('Test async error')):
+                response = self.orchestrator._run_async_with_fallback(test_process)
+            
+            # Verify logger.exception was called (not just logger.error or logger.warning)
+            mock_exception.assert_called_once()
+            # Verify the call includes information about the fallback
+            args, kwargs = mock_exception.call_args
+            self.assertIn('falling back', args[0].lower())
+
+
+# ============================================================================
+# UNIT TESTS - Metrics Module
+# ============================================================================
+
+class TestPrometheusMetrics(unittest.TestCase):
+    """Test cases for PrometheusMetrics."""
+    
+    def setUp(self):
+        """Set up test fixtures."""
+        # Reset the singleton
+        import mira.utils.metrics as metrics_module
+        metrics_module._metrics_instance = None
+    
+    def tearDown(self):
+        """Clean up after tests."""
+        import mira.utils.metrics as metrics_module
+        metrics_module._metrics_instance = None
+    
+    def test_metrics_disabled(self):
+        """Test metrics when disabled."""
+        from mira.utils.metrics import PrometheusMetrics
+        
+        metrics = PrometheusMetrics(enabled=False)
+        
+        self.assertFalse(metrics.enabled)
+        # Should not raise errors when calling increment methods
+        metrics.increment_timeout('test_agent', 'test_func')
+        metrics.increment_fallback('test_agent', 'test_func', 'timeout')
+    
+    def test_metrics_without_prometheus_client(self):
+        """Test metrics gracefully handles missing prometheus_client."""
+        from mira.utils.metrics import PrometheusMetrics
+        import mira.utils.metrics as metrics_module
+        
+        # Save the original value
+        original_available = metrics_module.PROMETHEUS_AVAILABLE
+        
+        try:
+            # Simulate prometheus_client not being available
+            metrics_module.PROMETHEUS_AVAILABLE = False
+            
+            with patch('mira.utils.metrics.logger') as mock_logger:
+                metrics = PrometheusMetrics(enabled=True)
+                
+                # Should log warning about missing prometheus_client
+                mock_logger.warning.assert_called()
+                # Metrics should be disabled
+                self.assertFalse(metrics.enabled)
+        finally:
+            # Restore the original value
+            metrics_module.PROMETHEUS_AVAILABLE = original_available
+    
+    def test_metrics_increment_timeout(self):
+        """Test incrementing timeout counter."""
+        from mira.utils.metrics import get_metrics
+        
+        metrics = get_metrics(enabled=False)  # Use disabled for testing
+        
+        # Should not raise error
+        metrics.increment_timeout('orchestrator_agent', 'process')
+    
+    def test_metrics_increment_fallback(self):
+        """Test incrementing fallback counter."""
+        from mira.utils.metrics import get_metrics
+        
+        metrics = get_metrics(enabled=False)  # Use disabled for testing
+        
+        # Should not raise error
+        metrics.increment_fallback('orchestrator_agent', 'process', 'timeout')
+        metrics.increment_fallback('orchestrator_agent', 'process', 'error')
+    
+    def test_metrics_singleton(self):
+        """Test that get_metrics returns singleton instance."""
+        from mira.utils.metrics import get_metrics
+        
+        metrics1 = get_metrics(enabled=False)
+        metrics2 = get_metrics(enabled=False)
+        
+        self.assertIs(metrics1, metrics2)
 
 
 # ============================================================================
