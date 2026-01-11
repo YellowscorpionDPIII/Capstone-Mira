@@ -18,6 +18,10 @@ class OrchestratorConfig(BaseSettings):
     mcp_endpoint: str = Field(default="http://localhost:8000/mcp")
     n8n_webhook_url: str = Field(default="")
     
+    # Agent execution settings
+    agent_process_timeout: float = Field(default=30.0, json_schema_extra={"env": "MIRA_AGENT_PROCESS_TIMEOUT"})
+    agent_metrics_enabled: bool = Field(default=True, json_schema_extra={"env": "MIRA_AGENT_METRICS_ENABLED"})
+    
     # Config file override
     config_path: str = "config/orchestrator_config.yaml"
     
