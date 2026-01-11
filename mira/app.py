@@ -75,6 +75,9 @@ class MiraApplication:
         self.webhook_handler.register_handler('trello', self._handle_trello_webhook)
         self.webhook_handler.register_handler('jira', self._handle_jira_webhook)
         
+        # Register health check endpoint
+        self._setup_health_check()
+        
     def _handle_github_webhook(self, data: dict) -> dict:
         """Handle GitHub webhook events."""
         # Process GitHub events and route to appropriate agents
@@ -89,6 +92,76 @@ class MiraApplication:
         """Handle Jira webhook events."""
         # Process Jira events and route to appropriate agents
         return {'status': 'processed', 'service': 'jira'}
+        
+    def _setup_health_check(self):
+        """Set up health check endpoint for Kubernetes probes."""
+        from flask import jsonify
+        
+        @self.webhook_handler.app.route('/healthz', methods=['GET'])
+        def health_check():
+            """
+            Health check endpoint for Kubernetes readiness/liveness probes.
+            
+            Checks:
+            - Configuration validity
+            - Agent initialization status
+            - Message broker status (if enabled)
+            
+            Returns:
+                200 OK if healthy, 503 Service Unavailable if unhealthy
+            """
+            health_status = {
+                'status': 'healthy',
+                'checks': {}
+            }
+            
+            # Check configuration
+            try:
+                if self.config:
+                    health_status['checks']['configuration'] = 'ok'
+                else:
+                    health_status['checks']['configuration'] = 'failed'
+                    health_status['status'] = 'unhealthy'
+            except Exception as e:
+                health_status['checks']['configuration'] = f'error: {str(e)}'
+                health_status['status'] = 'unhealthy'
+                
+            # Check agents
+            try:
+                if self.agents and len(self.agents) > 0:
+                    health_status['checks']['agents'] = 'ok'
+                    health_status['checks']['agent_count'] = len(self.agents)
+                else:
+                    health_status['checks']['agents'] = 'no agents initialized'
+                    health_status['status'] = 'unhealthy'
+            except Exception as e:
+                health_status['checks']['agents'] = f'error: {str(e)}'
+                health_status['status'] = 'unhealthy'
+                
+            # Check broker if enabled
+            if self.config.get('broker.enabled', True):
+                try:
+                    if self.broker:
+                        broker_status = 'running' if self.broker.running else 'stopped'
+                        health_status['checks']['broker'] = broker_status
+                        if not self.broker.running:
+                            health_status['status'] = 'degraded'
+                    else:
+                        health_status['checks']['broker'] = 'not initialized'
+                        health_status['status'] = 'unhealthy'
+                except Exception as e:
+                    health_status['checks']['broker'] = f'error: {str(e)}'
+                    health_status['status'] = 'unhealthy'
+            else:
+                health_status['checks']['broker'] = 'disabled'
+                
+            # Return appropriate status code
+            if health_status['status'] == 'healthy':
+                return jsonify(health_status), 200
+            elif health_status['status'] == 'degraded':
+                return jsonify(health_status), 200
+            else:
+                return jsonify(health_status), 503
         
     def start(self):
         """Start the Mira application."""
