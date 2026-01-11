@@ -19,25 +19,34 @@ class ShutdownHandler:
     def __init__(self):
         """Initialize the shutdown handler."""
         self.logger = logging.getLogger("mira.shutdown")
-        self.shutdown_callbacks: List[Callable] = []
+        self.shutdown_callbacks: List[tuple] = []  # List of (priority, callback, name)
         self.shutdown_initiated = False
         self.shutdown_lock = threading.Lock()
         self._original_sigterm = None
         self._original_sigint = None
         
-    def register_callback(self, callback: Callable, name: Optional[str] = None):
+    def register_callback(self, callback: Callable, name: Optional[str] = None, 
+                         priority: int = 100):
         """
         Register a callback to be called during shutdown.
         
-        Callbacks are called in reverse order of registration (LIFO).
+        Callbacks are executed in priority order (lower priority numbers execute first).
+        Within the same priority, callbacks are executed in reverse order of registration (LIFO).
+        
+        Priority guidelines:
+        - 0-49: Critical infrastructure (agents, active connections)
+        - 50-99: Application resources (caches, file handles)
+        - 100-149: Database connections and persistent storage (default)
+        - 150-199: Cleanup and logging
         
         Args:
             callback: Function to call during shutdown
             name: Optional name for the callback (for logging)
+            priority: Priority for callback execution (default: 100, lower executes first)
         """
         callback_name = name or getattr(callback, '__name__', 'unknown')
-        self.shutdown_callbacks.append((callback, callback_name))
-        self.logger.debug(f"Registered shutdown callback: {callback_name}")
+        self.shutdown_callbacks.append((priority, callback, callback_name))
+        self.logger.debug(f"Registered shutdown callback: {callback_name} (priority: {priority})")
         
     def unregister_callback(self, callback: Callable):
         """
@@ -47,7 +56,8 @@ class ShutdownHandler:
             callback: Callback function to remove
         """
         self.shutdown_callbacks = [
-            (cb, name) for cb, name in self.shutdown_callbacks if cb != callback
+            (priority, cb, name) for priority, cb, name in self.shutdown_callbacks 
+            if cb != callback
         ]
         
     def install_signal_handlers(self):
@@ -101,10 +111,16 @@ class ShutdownHandler:
         self.logger.info("Starting graceful shutdown sequence")
         start_time = datetime.now()
         
-        # Execute shutdown callbacks in reverse order (LIFO)
-        for callback, name in reversed(self.shutdown_callbacks):
+        # Sort callbacks by priority (lower priority numbers first), then by registration order (LIFO within same priority)
+        sorted_callbacks = sorted(
+            enumerate(self.shutdown_callbacks),
+            key=lambda x: (x[1][0], -x[0])  # Sort by priority, then reverse index for LIFO
+        )
+        
+        # Execute shutdown callbacks
+        for _, (priority, callback, name) in sorted_callbacks:
             try:
-                self.logger.info(f"Executing shutdown callback: {name}")
+                self.logger.info(f"Executing shutdown callback: {name} (priority: {priority})")
                 callback()
             except Exception as e:
                 self.logger.error(f"Error in shutdown callback {name}: {e}", exc_info=True)

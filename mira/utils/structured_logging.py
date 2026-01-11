@@ -8,16 +8,20 @@ from contextvars import ContextVar
 from datetime import datetime
 import uuid
 
-# Context variable for storing correlation ID
+# Context variables for storing correlation ID and context metadata
 _correlation_id: ContextVar[Optional[str]] = ContextVar('correlation_id', default=None)
+_agent_id: ContextVar[Optional[str]] = ContextVar('agent_id', default=None)
+_task_id: ContextVar[Optional[str]] = ContextVar('task_id', default=None)
 
 
 class CorrelationIdFilter(logging.Filter):
-    """Filter that adds correlation ID to log records."""
+    """Filter that adds correlation ID and context metadata to log records."""
     
     def filter(self, record: logging.LogRecord) -> bool:
-        """Add correlation ID to the log record."""
+        """Add correlation ID, agent_id, and task_id to the log record."""
         record.correlation_id = get_correlation_id() or 'N/A'
+        record.agent_id = get_agent_id() or 'N/A'
+        record.task_id = get_task_id() or 'N/A'
         return True
 
 
@@ -50,6 +54,8 @@ class JSONFormatter(logging.Formatter):
             'logger': record.name,
             'message': record.getMessage(),
             'correlation_id': getattr(record, 'correlation_id', 'N/A'),
+            'agent_id': getattr(record, 'agent_id', 'N/A'),
+            'task_id': getattr(record, 'task_id', 'N/A'),
             'module': record.module,
             'function': record.funcName,
             'line': record.lineno,
@@ -67,7 +73,7 @@ class JSONFormatter(logging.Formatter):
                 'levelname', 'levelno', 'lineno', 'module', 'msecs',
                 'message', 'pathname', 'process', 'processName', 'relativeCreated',
                 'thread', 'threadName', 'exc_info', 'exc_text', 'stack_info',
-                'correlation_id', 'taskName', 'getMessage', 'asctime'
+                'correlation_id', 'agent_id', 'task_id', 'taskName', 'getMessage', 'asctime'
             }
             
             # Add any extra attributes added to the record
@@ -114,30 +120,115 @@ def clear_correlation_id():
     _correlation_id.set(None)
 
 
-class CorrelationContext:
-    """Context manager for setting correlation ID for a block of code."""
+def set_agent_id(agent_id: Optional[str]) -> Optional[str]:
+    """
+    Set the agent ID for the current context.
     
-    def __init__(self, correlation_id: Optional[str] = None):
+    Args:
+        agent_id: Agent ID to set
+        
+    Returns:
+        The agent ID that was set
+    """
+    _agent_id.set(agent_id)
+    return agent_id
+
+
+def get_agent_id() -> Optional[str]:
+    """
+    Get the current agent ID.
+    
+    Returns:
+        Current agent ID or None if not set
+    """
+    return _agent_id.get()
+
+
+def clear_agent_id():
+    """Clear the agent ID for the current context."""
+    _agent_id.set(None)
+
+
+def set_task_id(task_id: Optional[str]) -> Optional[str]:
+    """
+    Set the task ID for the current context.
+    
+    Args:
+        task_id: Task ID to set
+        
+    Returns:
+        The task ID that was set
+    """
+    _task_id.set(task_id)
+    return task_id
+
+
+def get_task_id() -> Optional[str]:
+    """
+    Get the current task ID.
+    
+    Returns:
+        Current task ID or None if not set
+    """
+    return _task_id.get()
+
+
+def clear_task_id():
+    """Clear the task ID for the current context."""
+    _task_id.set(None)
+
+
+class CorrelationContext:
+    """Context manager for setting correlation ID and metadata for multi-agent tracing."""
+    
+    def __init__(self, correlation_id: Optional[str] = None,
+                 agent_id: Optional[str] = None,
+                 task_id: Optional[str] = None):
         """
-        Initialize correlation context.
+        Initialize correlation context with multi-agent tracing support.
         
         Args:
             correlation_id: Correlation ID to use, or None to generate a new one
+            agent_id: Optional agent ID for multi-agent tracing
+            task_id: Optional task ID for multi-agent tracing
         """
         self.correlation_id = correlation_id
+        self.agent_id = agent_id
+        self.task_id = task_id
         self.previous_id = None
+        self.previous_agent_id = None
+        self.previous_task_id = None
         
     def __enter__(self) -> str:
-        """Enter the context and set correlation ID."""
+        """Enter the context and set correlation ID and metadata."""
         self.previous_id = get_correlation_id()
-        return set_correlation_id(self.correlation_id)
+        self.previous_agent_id = get_agent_id()
+        self.previous_task_id = get_task_id()
+        
+        correlation_id = set_correlation_id(self.correlation_id)
+        if self.agent_id is not None:
+            set_agent_id(self.agent_id)
+        if self.task_id is not None:
+            set_task_id(self.task_id)
+            
+        return correlation_id
         
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """Exit the context and restore previous correlation ID."""
+        """Exit the context and restore previous correlation ID and metadata."""
         if self.previous_id is not None:
             _correlation_id.set(self.previous_id)
         else:
             clear_correlation_id()
+            
+        if self.previous_agent_id is not None:
+            _agent_id.set(self.previous_agent_id)
+        else:
+            clear_agent_id()
+            
+        if self.previous_task_id is not None:
+            _task_id.set(self.previous_task_id)
+        else:
+            clear_task_id()
 
 
 def setup_structured_logging(

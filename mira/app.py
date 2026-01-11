@@ -1,6 +1,7 @@
 """Main application entry point for Mira platform."""
 from typing import Optional
 import logging
+from datetime import datetime
 from mira.core.message_broker import get_broker
 from mira.core.webhook_handler import WebhookHandler
 from mira.agents.project_plan_agent import ProjectPlanAgent
@@ -61,7 +62,7 @@ class MiraApplication:
         # Initialize message broker
         self.broker = get_broker()
         
-        # Register broker cleanup on shutdown
+        # Register broker cleanup on shutdown (lower priority = agents should stop first)
         def stop_broker():
             """Stop message broker if running."""
             if self.broker and hasattr(self.broker, 'running') and self.broker.running:
@@ -73,7 +74,7 @@ class MiraApplication:
                 except:
                     pass
         
-        self.shutdown_handler.register_callback(stop_broker, name='message_broker_stop')
+        self.shutdown_handler.register_callback(stop_broker, name='message_broker_stop', priority=100)
         
         # Initialize agents
         self.agents = {}
@@ -96,10 +97,11 @@ class MiraApplication:
             self.hot_reload_config.register_reload_callback(on_config_reload, 'log_reload')
             self.hot_reload_config.enable_hot_reload()
             
-            # Register hot-reload cleanup on shutdown
+            # Register hot-reload cleanup on shutdown (higher priority = cleanup tasks)
             self.shutdown_handler.register_callback(
                 lambda: self.hot_reload_config.disable_hot_reload() if self.hot_reload_config else None,
-                name='config_hotreload_stop'
+                name='config_hotreload_stop',
+                priority=150
             )
             
             self.logger.info(f"Config hot-reload enabled for: {self.config_path}")
@@ -137,6 +139,54 @@ class MiraApplication:
         self.webhook_handler.register_handler('github', self._handle_github_webhook)
         self.webhook_handler.register_handler('trello', self._handle_trello_webhook)
         self.webhook_handler.register_handler('jira', self._handle_jira_webhook)
+        
+        # Register health check endpoint for K8s liveness/readiness probes
+        self.webhook_handler.register_handler('healthz', self._handle_healthz)
+        self.webhook_handler.register_handler('readyz', self._handle_readyz)
+    
+    def _handle_healthz(self, data: dict) -> dict:
+        """
+        Handle liveness probe for Kubernetes.
+        
+        Returns 200 OK if the application is alive (can accept traffic).
+        """
+        return {
+            'status': 'healthy',
+            'timestamp': datetime.now().isoformat(),
+            'service': 'mira'
+        }
+    
+    def _handle_readyz(self, data: dict) -> dict:
+        """
+        Handle readiness probe for Kubernetes.
+        
+        Returns 200 OK if the application is ready to handle requests.
+        Checks critical components like broker and agents.
+        """
+        ready = True
+        components = {}
+        
+        # Check message broker
+        if self.config.get('broker.enabled', True):
+            broker_ready = hasattr(self.broker, 'running') and self.broker.running
+            components['message_broker'] = 'ready' if broker_ready else 'not_ready'
+            ready = ready and broker_ready
+        
+        # Check if shutdown is in progress
+        shutdown_in_progress = self.shutdown_handler.is_shutting_down()
+        components['shutdown_status'] = 'shutting_down' if shutdown_in_progress else 'running'
+        ready = ready and not shutdown_in_progress
+        
+        # Check agents
+        components['agents_count'] = len(self.agents)
+        components['agents_ready'] = len(self.agents) > 0
+        ready = ready and len(self.agents) > 0
+        
+        return {
+            'status': 'ready' if ready else 'not_ready',
+            'timestamp': datetime.now().isoformat(),
+            'components': components
+        }
         
     def _handle_github_webhook(self, data: dict) -> dict:
         """Handle GitHub webhook events."""

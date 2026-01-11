@@ -5,6 +5,7 @@ from typing import Dict, Any, Optional, Callable
 from abc import ABC, abstractmethod
 import threading
 import time
+import random
 
 
 class SecretsBackend(ABC):
@@ -39,10 +40,11 @@ class SecretsBackend(ABC):
 
 
 class VaultBackend(SecretsBackend):
-    """Vault secrets backend."""
+    """Vault secrets backend with retry logic."""
     
     def __init__(self, vault_addr: str, token: Optional[str] = None, 
-                 namespace: Optional[str] = None, mount_point: str = 'secret'):
+                 namespace: Optional[str] = None, mount_point: str = 'secret',
+                 max_retries: int = 3, retry_base_delay: float = 1.0):
         """
         Initialize Vault backend.
         
@@ -51,6 +53,8 @@ class VaultBackend(SecretsBackend):
             token: Vault token (can also be set via VAULT_TOKEN env var)
             namespace: Vault namespace (optional)
             mount_point: Secret mount point (default: 'secret')
+            max_retries: Maximum number of retry attempts (default: 3)
+            retry_base_delay: Base delay for exponential backoff in seconds (default: 1.0)
         """
         self.logger = logging.getLogger("mira.secrets.vault")
         
@@ -64,6 +68,8 @@ class VaultBackend(SecretsBackend):
         self.token = token or os.getenv('VAULT_TOKEN')
         self.namespace = namespace
         self.mount_point = mount_point
+        self.max_retries = max_retries
+        self.retry_base_delay = retry_base_delay
         
         if not self.token:
             raise ValueError("Vault token is required (set VAULT_TOKEN env var or pass token parameter)")
@@ -78,10 +84,78 @@ class VaultBackend(SecretsBackend):
             raise ValueError("Failed to authenticate with Vault")
             
         self.logger.info(f"Initialized Vault backend at {vault_addr}")
+    
+    def _retry_with_backoff(self, func: Callable, *args, **kwargs) -> Any:
+        """
+        Execute a function with exponential backoff retry logic.
+        
+        Args:
+            func: Function to execute
+            *args: Positional arguments for the function
+            **kwargs: Keyword arguments for the function
+            
+        Returns:
+            Function result
+            
+        Raises:
+            Last exception if all retries fail
+        """
+        last_exception = None
+        
+        for attempt in range(self.max_retries):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                last_exception = e
+                
+                # Check if it's a transient error that should be retried
+                if self._is_retriable_error(e):
+                    if attempt < self.max_retries - 1:
+                        # Calculate delay with exponential backoff and jitter
+                        delay = self.retry_base_delay * (2 ** attempt) + random.uniform(0, 0.1)
+                        self.logger.warning(
+                            f"Transient error on attempt {attempt + 1}/{self.max_retries}: {e}. "
+                            f"Retrying in {delay:.2f}s..."
+                        )
+                        time.sleep(delay)
+                    else:
+                        self.logger.error(f"All {self.max_retries} retry attempts failed")
+                else:
+                    # Non-retriable error, fail immediately
+                    self.logger.error(f"Non-retriable error: {e}")
+                    raise
+        
+        # All retries exhausted
+        raise last_exception
+    
+    def _is_retriable_error(self, error: Exception) -> bool:
+        """
+        Determine if an error is retriable (transient).
+        
+        Args:
+            error: Exception to check
+            
+        Returns:
+            True if the error is retriable
+        """
+        # Check for common transient errors
+        error_str = str(error).lower()
+        retriable_patterns = [
+            'connection',
+            'timeout',
+            'temporarily unavailable',
+            'service unavailable',
+            'too many requests',
+            '429',
+            '503',
+            '504',
+        ]
+        
+        return any(pattern in error_str for pattern in retriable_patterns)
         
     def get_secret(self, path: str, key: Optional[str] = None) -> Any:
         """
-        Get a secret from Vault.
+        Get a secret from Vault with retry logic.
         
         Args:
             path: Path to the secret
@@ -90,7 +164,7 @@ class VaultBackend(SecretsBackend):
         Returns:
             Secret value
         """
-        try:
+        def _get():
             # Read secret from Vault KV v2
             response = self.client.secrets.kv.v2.read_secret_version(
                 path=path,
@@ -102,13 +176,12 @@ class VaultBackend(SecretsBackend):
             if key:
                 return data.get(key)
             return data
-        except Exception as e:
-            self.logger.error(f"Error reading secret from Vault: {e}")
-            raise
+        
+        return self._retry_with_backoff(_get)
             
     def list_secrets(self, path: str) -> list:
         """
-        List secrets at a Vault path.
+        List secrets at a Vault path with retry logic.
         
         Args:
             path: Path to list secrets from
@@ -116,15 +189,14 @@ class VaultBackend(SecretsBackend):
         Returns:
             List of secret names
         """
-        try:
+        def _list():
             response = self.client.secrets.kv.v2.list_secrets(
                 path=path,
                 mount_point=self.mount_point
             )
             return response['data']['keys']
-        except Exception as e:
-            self.logger.error(f"Error listing secrets from Vault: {e}")
-            raise
+        
+        return self._retry_with_backoff(_list)
 
 
 class KubernetesBackend(SecretsBackend):
