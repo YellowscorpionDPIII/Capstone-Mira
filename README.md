@@ -358,6 +358,278 @@ Capstone-Mira/
 └── README.md
 ```
 
+## 🏭 Production Deployment
+
+### Docker Compose with Vault
+
+Deploy Mira with HashiCorp Vault for secrets management:
+
+**docker-compose.yml:**
+```yaml
+version: '3.8'
+
+services:
+  vault:
+    image: hashicorp/vault:latest
+    container_name: mira-vault
+    ports:
+      - "8200:8200"
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: myroot
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+    cap_add:
+      - IPC_LOCK
+    healthcheck:
+      test: ["CMD", "vault", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  mira:
+    build: .
+    container_name: mira-app
+    ports:
+      - "5000:5000"
+    environment:
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: myroot
+      MIRA_WEBHOOK_ENABLED: "true"
+      MIRA_WEBHOOK_PORT: 5000
+    volumes:
+      - ./config:/etc/mira
+    depends_on:
+      vault:
+        condition: service_healthy
+    command: python -m mira.app --config /etc/mira/config.json --structured-logging --hot-reload
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+```
+
+**Dockerfile:**
+```dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install dependencies
+COPY requirements.txt setup.py ./
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir hvac
+
+# Copy application
+COPY mira ./mira
+COPY config.example.json /etc/mira/config.json
+
+# Non-root user for security
+RUN useradd -m -u 1000 mira && \
+    chown -R mira:mira /app /etc/mira
+USER mira
+
+EXPOSE 5000
+
+CMD ["python", "-m", "mira.app", "--config", "/etc/mira/config.json", "--structured-logging"]
+```
+
+**Setup Vault secrets:**
+```bash
+# Start services
+docker-compose up -d
+
+# Configure Vault (first time only)
+docker exec -it mira-vault sh
+vault login myroot
+vault secrets enable -path=secret kv-v2
+vault kv put secret/mira/database password=secure_password username=mira_user
+vault kv put secret/mira/api key=api_key_xyz789
+exit
+
+# Restart Mira to use secrets
+docker-compose restart mira
+```
+
+### Kubernetes Deployment
+
+**mira-deployment.yaml:**
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mira-secrets
+type: Opaque
+stringData:
+  database-password: "secure_password"
+  api-key: "api_key_xyz789"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mira-config
+data:
+  config.json: |
+    {
+      "logging": {"level": "INFO"},
+      "broker": {"enabled": true},
+      "webhook": {
+        "enabled": true,
+        "host": "0.0.0.0",
+        "port": 5000
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mira
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mira
+  template:
+    metadata:
+      labels:
+        app: mira
+    spec:
+      containers:
+      - name: mira
+        image: mira:latest
+        ports:
+        - containerPort: 5000
+        env:
+        - name: DATABASE_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: mira-secrets
+              key: database-password
+        - name: API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: mira-secrets
+              key: api-key
+        volumeMounts:
+        - name: config
+          mountPath: /etc/mira
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 5000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 5000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      volumes:
+      - name: config
+        configMap:
+          name: mira-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mira-service
+spec:
+  selector:
+    app: mira
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 5000
+  type: LoadBalancer
+```
+
+**Deploy to Kubernetes:**
+```bash
+# Apply configuration
+kubectl apply -f mira-deployment.yaml
+
+# Check deployment status
+kubectl get pods -l app=mira
+kubectl get svc mira-service
+
+# View logs
+kubectl logs -l app=mira --tail=100 -f
+
+# Check health
+kubectl port-forward svc/mira-service 5000:80
+curl http://localhost:5000/healthz
+curl http://localhost:5000/readyz
+```
+
+### Production Configuration Example
+
+**config/production.json:**
+```json
+{
+  "logging": {
+    "level": "INFO",
+    "file": "/var/log/mira/app.log"
+  },
+  "broker": {
+    "enabled": true,
+    "queue_size": 10000
+  },
+  "webhook": {
+    "enabled": true,
+    "host": "0.0.0.0",
+    "port": 5000,
+    "secret_key": "${WEBHOOK_SECRET}"
+  },
+  "agents": {
+    "project_plan_agent": {"enabled": true},
+    "risk_assessment_agent": {"enabled": true},
+    "status_reporter_agent": {"enabled": true},
+    "orchestrator_agent": {"enabled": true}
+  }
+}
+```
+
+### Monitoring and Observability
+
+**Integration with ELK Stack:**
+```python
+from mira.app import MiraApplication
+import logging.handlers
+
+app = MiraApplication(
+    config_path='config/production.json',
+    use_structured_logging=True  # JSON logs to stdout
+)
+
+# Logs are JSON-formatted and can be shipped to ELK
+# Example log entry:
+# {
+#   "timestamp": "2024-01-15T10:30:45.123Z",
+#   "level": "INFO",
+#   "correlation_id": "a1b2c3d4-e5f6-7890",
+#   "agent_id": "orchestrator",
+#   "task_id": "task-123",
+#   "message": "Processing request"
+# }
+```
+
+**Prometheus Metrics (Future Enhancement):**
+```python
+# Example of how metrics could be added
+from prometheus_client import Counter, Histogram
+
+request_count = Counter('mira_requests_total', 'Total requests')
+request_duration = Histogram('mira_request_duration_seconds', 'Request duration')
+```
+
 ## 🤝 Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
