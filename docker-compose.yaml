@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  mira:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: mira:latest
+    container_name: mira
+    ports:
+      - "5000:5000"
+    environment:
+      - MIRA_WEBHOOK_ENABLED=true
+      - MIRA_WEBHOOK_PORT=5000
+      - MIRA_WEBHOOK_SECRET=${MIRA_WEBHOOK_SECRET:-change-me}
+      - MIRA_LOG_LEVEL=${MIRA_LOG_LEVEL:-INFO}
+    volumes:
+      # Mount config file if needed
+      - ./config.json:/app/config.json:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/healthz')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - mira-network
+
+networks:
+  mira-network:
+    driver: bridge
