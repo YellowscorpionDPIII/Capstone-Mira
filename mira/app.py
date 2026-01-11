@@ -142,10 +142,13 @@ class MiraApplication:
             if self.config.get('broker.enabled', True):
                 try:
                     if self.broker:
-                        broker_status = 'running' if self.broker.running else 'stopped'
-                        health_status['checks']['broker'] = broker_status
-                        if not self.broker.running:
-                            health_status['status'] = 'degraded'
+                        if hasattr(self.broker, 'running'):
+                            broker_status = 'running' if self.broker.running else 'stopped'
+                            health_status['checks']['broker'] = broker_status
+                            if not self.broker.running:
+                                health_status['status'] = 'degraded'
+                        else:
+                            health_status['checks']['broker'] = 'status unavailable'
                     else:
                         health_status['checks']['broker'] = 'not initialized'
                         health_status['status'] = 'unhealthy'

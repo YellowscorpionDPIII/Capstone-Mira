@@ -8,7 +8,7 @@ import json
 import uuid
 from typing import Optional, Dict, Any, List
 from contextvars import ContextVar
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import wraps
 
 
@@ -159,7 +159,7 @@ class StructuredFormatter(logging.Formatter):
             JSON-formatted log entry
         """
         log_data = {
-            'timestamp': datetime.utcnow().isoformat() + 'Z',
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'level': record.levelname,
             'logger': record.name,
             'message': record.getMessage(),
@@ -305,6 +305,11 @@ def with_correlation_context(
         
     Returns:
         Decorated function
+        
+    Note:
+        If agent_id is not provided, the decorator will attempt to extract it
+        from the first argument (self.agent_id) if the function is a method
+        of an object with an 'agent_id' attribute.
     """
     def decorator(func):
         @wraps(func)

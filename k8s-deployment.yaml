@@ -125,6 +125,7 @@ spec:
         averageUtilization: 80
 ---
 # Optional: Secret for webhook (create manually or via sealed-secrets)
+# IMPORTANT: Replace with a secure secret in production!
 apiVersion: v1
 kind: Secret
 metadata:
@@ -132,4 +133,4 @@ metadata:
   namespace: mira
 type: Opaque
 stringData:
-  webhook-secret: "change-me-in-production"
+  webhook-secret: "REPLACE_WITH_SECURE_SECRET_IN_PRODUCTION"

@@ -138,7 +138,9 @@ class ShutdownHandler:
             return
             
         def signal_handler(signum, frame):
-            signal_name = signal.Signals(signum).name
+            signal_name = getattr(signal.Signals, str(signum), f'signal_{signum}')
+            if hasattr(signal_name, 'name'):
+                signal_name = signal_name.name
             logger.info(f"Received signal {signal_name}, initiating shutdown...")
             self.execute_shutdown()
             # Exit after shutdown

@@ -6,6 +6,7 @@ supporting Vault, Kubernetes secrets, and environment variables.
 import os
 import time
 import logging
+import base64
 from typing import Optional, Dict, Any, Callable
 from functools import wraps
 
@@ -173,12 +174,16 @@ class SecretsManager:
             if key:
                 if key not in secret_data:
                     raise SecretNotFoundError(f"Key '{key}' not found in K8s secret '{name}'")
-                import base64
-                return base64.b64decode(secret_data[key]).decode('utf-8')
+                try:
+                    return base64.b64decode(secret_data[key]).decode('utf-8')
+                except Exception as e:
+                    raise SecretsManagerError(f"Error decoding secret '{name}/{key}': {e}")
             else:
                 # Return all decoded secrets
-                import base64
-                return {k: base64.b64decode(v).decode('utf-8') for k, v in secret_data.items()}
+                try:
+                    return {k: base64.b64decode(v).decode('utf-8') for k, v in secret_data.items()}
+                except Exception as e:
+                    raise SecretsManagerError(f"Error decoding secrets from '{name}': {e}")
         except Exception as e:
             raise SecretsManagerError(f"Error fetching from Kubernetes: {e}")
             
