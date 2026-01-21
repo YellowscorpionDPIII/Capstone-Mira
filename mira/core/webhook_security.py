@@ -5,6 +5,7 @@ import hmac
 import hashlib
 import ipaddress
 import logging
+from datetime import datetime, timezone
 
 
 class AuthFailureReason(Enum):
@@ -56,14 +57,16 @@ class WebhookSecurityConfig:
 class WebhookAuthenticator:
     """Handles webhook authentication pipeline."""
     
-    def __init__(self, config: WebhookSecurityConfig):
+    def __init__(self, config: WebhookSecurityConfig, timestamp_window_seconds: int = 300):
         """
         Initialize webhook authenticator.
         
         Args:
             config: Security configuration
+            timestamp_window_seconds: Maximum allowed age of timestamp (default: 300 seconds / 5 minutes)
         """
         self.config = config
+        self.timestamp_window_seconds = timestamp_window_seconds
         self.logger = logging.getLogger("mira.webhook.security")
     
     def authenticate(
@@ -71,16 +74,18 @@ class WebhookAuthenticator:
         client_ip: str,
         payload: bytes,
         signature_header: Optional[str] = None,
-        secret_header: Optional[str] = None
+        secret_header: Optional[str] = None,
+        timestamp_header: Optional[str] = None
     ) -> tuple[bool, AuthFailureReason]:
         """
-        Authenticate webhook request with pipeline: IP → secret → signature.
+        Authenticate webhook request with pipeline: IP → secret → signature → timestamp.
         
         Args:
             client_ip: Client IP address
             payload: Request payload bytes
             signature_header: Signature from request header
             secret_header: Secret from request header
+            timestamp_header: Timestamp from request header (ISO 8601 format)
             
         Returns:
             Tuple of (is_authenticated, failure_reason)
@@ -106,8 +111,42 @@ class WebhookAuthenticator:
                 self.logger.warning(f"Invalid signature from IP: {client_ip}")
                 return False, AuthFailureReason.AUTH_SIGNATURE_INVALID
         
+        # Step 4: Check timestamp for replay protection (if provided)
+        if timestamp_header is not None:
+            timestamp_valid = self.validate_signature_timestamp(timestamp_header)
+            if not timestamp_valid:
+                self.logger.warning(f"Invalid or expired timestamp from IP: {client_ip}")
+                return False, AuthFailureReason.AUTH_SIGNATURE_INVALID
+        
         self.logger.info(f"Webhook authenticated from IP: {client_ip}")
         return True, AuthFailureReason.AUTH_SUCCESS
+    
+    def validate_signature_timestamp(self, timestamp: str) -> bool:
+        """
+        Validate if the timestamp is within an acceptable time range.
+        
+        Args:
+            timestamp: ISO 8601 timestamp string
+            
+        Returns:
+            True if timestamp is valid and within the acceptable window
+        """
+        try:
+            ts = datetime.fromisoformat(timestamp)
+            # Normalize to UTC for consistent comparison
+            if ts.tzinfo is None:
+                # Assume naive timestamps are UTC
+                now = datetime.utcnow()
+            else:
+                # Convert timezone-aware timestamp to UTC
+                ts = ts.astimezone(timezone.utc).replace(tzinfo=None)
+                now = datetime.utcnow()
+            
+            age_seconds = (now - ts).total_seconds()
+            return age_seconds >= 0 and age_seconds < self.timestamp_window_seconds
+        except (ValueError, TypeError) as e:
+            self.logger.warning(f"Invalid timestamp format for replay protection: {e}")
+            return False
     
     def _check_ip(self, client_ip: str) -> bool:
         """

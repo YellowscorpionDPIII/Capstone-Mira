@@ -136,6 +136,43 @@ class TestAPIKeyManager(unittest.TestCase):
         self.assertIsNotNone(info)
         self.assertEqual(info['key_id'], "test_key")
         self.assertEqual(info['status'], KeyStatus.ACTIVE.value)
+    
+    def test_rate_limiting_within_limit(self):
+        """Test that requests within rate limit are allowed."""
+        api_key, _ = self.manager.create()
+        
+        # Make requests within the limit
+        for i in range(50):
+            self.assertFalse(self.manager.is_rate_limited(api_key))
+            self.manager.increment_usage(api_key)
+    
+    def test_rate_limiting_exceeds_limit(self):
+        """Test that requests exceeding rate limit are blocked."""
+        api_key, _ = self.manager.create()
+        
+        # Exhaust the rate limit (default 100)
+        for i in range(100):
+            self.manager.increment_usage(api_key)
+        
+        # Next request should be rate limited
+        self.assertTrue(self.manager.is_rate_limited(api_key))
+        
+        # Should raise exception
+        with self.assertRaises(Exception) as context:
+            self.manager.increment_usage(api_key)
+        self.assertIn("Rate limit exceeded", str(context.exception))
+    
+    def test_rate_limiting_custom_limit(self):
+        """Test custom rate limit value."""
+        custom_manager = APIKeyManager(self.storage, rate_limit=10)
+        api_key, _ = custom_manager.create()
+        
+        # Exhaust the custom limit (10)
+        for i in range(10):
+            custom_manager.increment_usage(api_key)
+        
+        # Should be rate limited
+        self.assertTrue(custom_manager.is_rate_limited(api_key))
 
 
 class TestFileAPIKeyStorage(unittest.TestCase):
@@ -333,7 +370,190 @@ class TestWebhookSecurity(unittest.TestCase):
                 allowed_ips=["invalid_ip"],
                 require_ip_whitelist=True
             )
+    
+    def test_timestamp_validation_valid(self):
+        """Test timestamp validation with valid recent timestamp."""
+        config = WebhookSecurityConfig(require_signature=False, require_ip_whitelist=False)
+        authenticator = WebhookAuthenticator(config, timestamp_window_seconds=300)
+        
+        # Create a recent timestamp (within window)
+        recent_timestamp = datetime.utcnow().isoformat()
+        
+        is_valid = authenticator.validate_signature_timestamp(recent_timestamp)
+        self.assertTrue(is_valid)
+    
+    def test_timestamp_validation_expired(self):
+        """Test timestamp validation with expired timestamp."""
+        config = WebhookSecurityConfig(require_signature=False, require_ip_whitelist=False)
+        authenticator = WebhookAuthenticator(config, timestamp_window_seconds=300)
+        
+        # Create an old timestamp (beyond window)
+        old_timestamp = (datetime.utcnow() - timedelta(seconds=400)).isoformat()
+        
+        is_valid = authenticator.validate_signature_timestamp(old_timestamp)
+        self.assertFalse(is_valid)
+    
+    def test_timestamp_validation_malformed(self):
+        """Test timestamp validation with malformed timestamp."""
+        config = WebhookSecurityConfig(require_signature=False, require_ip_whitelist=False)
+        authenticator = WebhookAuthenticator(config, timestamp_window_seconds=300)
+        
+        is_valid = authenticator.validate_signature_timestamp("not-a-timestamp")
+        self.assertFalse(is_valid)
+    
+    def test_timestamp_validation_future(self):
+        """Test timestamp validation with future timestamp."""
+        config = WebhookSecurityConfig(require_signature=False, require_ip_whitelist=False)
+        authenticator = WebhookAuthenticator(config, timestamp_window_seconds=300)
+        
+        # Create a future timestamp
+        future_timestamp = (datetime.utcnow() + timedelta(seconds=100)).isoformat()
+        
+        is_valid = authenticator.validate_signature_timestamp(future_timestamp)
+        self.assertFalse(is_valid)
+    
+    def test_authenticate_with_valid_timestamp(self):
+        """Test authentication with valid timestamp header."""
+        config = WebhookSecurityConfig(
+            require_signature=False,
+            require_ip_whitelist=False
+        )
+        authenticator = WebhookAuthenticator(config, timestamp_window_seconds=300)
+        
+        recent_timestamp = datetime.utcnow().isoformat()
+        
+        is_auth, reason = authenticator.authenticate(
+            client_ip="127.0.0.1",
+            payload=b"test",
+            timestamp_header=recent_timestamp
+        )
+        self.assertTrue(is_auth)
+    
+    def test_authenticate_with_expired_timestamp(self):
+        """Test authentication rejects expired timestamp."""
+        config = WebhookSecurityConfig(
+            require_signature=False,
+            require_ip_whitelist=False
+        )
+        authenticator = WebhookAuthenticator(config, timestamp_window_seconds=300)
+        
+        old_timestamp = (datetime.utcnow() - timedelta(seconds=400)).isoformat()
+        
+        is_auth, reason = authenticator.authenticate(
+            client_ip="127.0.0.1",
+            payload=b"test",
+            timestamp_header=old_timestamp
+        )
+        self.assertFalse(is_auth)
+        self.assertEqual(reason, AuthFailureReason.AUTH_SIGNATURE_INVALID)
 
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class TestConcurrentFailureHandling(unittest.TestCase):
+    """Test concurrent operations with intentional failures."""
+    
+    def test_concurrent_api_key_validation(self):
+        """Test API key validation under concurrent load with failures."""
+        from concurrent.futures import ThreadPoolExecutor
+        import random
+        
+        storage = InMemoryAPIKeyStorage()
+        manager = APIKeyManager(storage, default_expiry_days=90)
+        
+        # Create some valid keys
+        valid_keys = []
+        for i in range(5):
+            api_key, _ = manager.create()
+            valid_keys.append(api_key)
+        
+        def validate_with_random_failures(key_index):
+            """Validate keys with random failures."""
+            try:
+                # Randomly use valid or invalid keys
+                if random.choice([True, False]) and valid_keys:
+                    key = valid_keys[key_index % len(valid_keys)]
+                else:
+                    key = "invalid_key_" + str(random.randint(1000, 9999))
+                
+                # Randomly raise exceptions
+                if random.random() < 0.1:  # 10% failure rate
+                    raise Exception("Simulated failure")
+                
+                is_valid, _, _ = manager.validate(key)
+                return "success" if is_valid else "invalid"
+            except Exception:
+                return "failed"
+        
+        # Run concurrent validations
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            results = list(executor.map(validate_with_random_failures, range(50)))
+        
+        # Verify we got a mix of results
+        self.assertGreater(results.count("failed"), 0, "Should have some failures")
+        self.assertGreater(results.count("success") + results.count("invalid"), 0, "Should have some successes")
+        self.assertEqual(len(results), 50, "Should have all 50 results")
+    
+    def test_concurrent_rate_limiting(self):
+        """Test rate limiting under concurrent load."""
+        from concurrent.futures import ThreadPoolExecutor
+        
+        storage = InMemoryAPIKeyStorage()
+        manager = APIKeyManager(storage, rate_limit=50)
+        
+        api_key, _ = manager.create()
+        
+        def increment_with_handling():
+            """Try to increment usage, handle rate limit errors."""
+            try:
+                manager.increment_usage(api_key)
+                return "success"
+            except Exception as e:
+                if "Rate limit exceeded" in str(e):
+                    return "rate_limited"
+                return "error"
+        
+        # Run concurrent increments (more than rate limit)
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            results = list(executor.map(lambda _: increment_with_handling(), range(100)))
+        
+        # Should have mix of successes and rate limited
+        self.assertGreater(results.count("success"), 0, "Should have some successes")
+        self.assertGreater(results.count("rate_limited"), 0, "Should hit rate limit")
+        self.assertEqual(len(results), 100, "Should have all 100 results")
+    
+    def test_concurrent_webhook_authentication(self):
+        """Test webhook authentication under concurrent load."""
+        from concurrent.futures import ThreadPoolExecutor
+        import random
+        
+        config = WebhookSecurityConfig(
+            require_signature=False,
+            require_ip_whitelist=False
+        )
+        authenticator = WebhookAuthenticator(config)
+        
+        def authenticate_with_random_failures():
+            """Authenticate with random failures."""
+            try:
+                # Randomly raise exceptions
+                if random.random() < 0.05:  # 5% failure rate
+                    raise Exception("Simulated network failure")
+                
+                is_auth, reason = authenticator.authenticate(
+                    client_ip="127.0.0.1",
+                    payload=b"test payload"
+                )
+                return "success" if is_auth else "failed"
+            except Exception:
+                return "error"
+        
+        # Run concurrent authentications
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            results = list(executor.map(lambda _: authenticate_with_random_failures(), range(50)))
+        
+        # Verify we got results
+        self.assertGreater(results.count("success"), 0, "Should have some successes")
+        self.assertEqual(len(results), 50, "Should have all 50 results")
