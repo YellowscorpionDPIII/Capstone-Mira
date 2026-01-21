@@ -49,8 +49,14 @@ Modular multi-agent AI workflow system for technical program management. Automat
 git clone https://github.com/YellowscorpionDPIII/Capstone-Mira.git
 cd Capstone-Mira
 
-# Install dependencies
+# Install dependencies (recommended: use lockfile for reproducible builds)
+pip install -r requirements-lock.txt
+
+# Or install with flexible versions
 pip install -r requirements.txt
+
+# For development (includes test dependencies)
+pip install -r requirements-dev-lock.txt
 
 # Or install as a package
 pip install -e .
