@@ -249,10 +249,41 @@ class OrchestratorAgent(BaseAgent):
         
         Args:
             data: Workflow definition containing workflow_type and workflow data
-            timeout: Timeout in seconds (default: 30.0)
+            timeout: Timeout in seconds (default: 30.0). Note: Sub-second timeouts (< 1.0s)
+                     are supported but may result in immediate timeout for complex workflows.
             
         Returns:
-            Workflow execution results, including partial progress if timeout occurs
+            Dict[str, Any]: Workflow execution results with one of the following structures:
+            
+            Success Response (no timeout):
+                {
+                    'workflow_type': str,
+                    'steps': [
+                        {'step': str, 'status': str, 'result': Any},
+                        ...
+                    ]
+                }
+            
+            Timeout Response:
+                {
+                    'workflow_type': str,
+                    'status': 'timeout',
+                    'error': str,
+                    'steps': [...],  # Completed steps only
+                    'partial_progress': {
+                        'completed_steps': [str],  # List of completed step names
+                        'total_steps_completed': int,
+                        'timeout_seconds': float
+                    }
+                }
+            
+            Error Response (exception occurred):
+                {
+                    'workflow_type': str,
+                    'status': 'error',
+                    'error': str,
+                    'steps': [...]  # Steps completed before error
+                }
         """
         workflow_type = data.get('workflow_type')
         workflow_data = data.get('data', {})
@@ -262,35 +293,127 @@ class OrchestratorAgent(BaseAgent):
             'steps': []
         }
         
+        # Create a task for the workflow execution
+        workflow_task = None
+        
         try:
-            # Wrap workflow execution in asyncio.wait_for with timeout
-            results = await asyncio.wait_for(
-                self._run_workflow_steps_async(workflow_type, workflow_data, results),
-                timeout=timeout
+            # Validate timeout value and warn for edge cases
+            if timeout < 0:
+                raise ValueError(f"Timeout must be non-negative, got {timeout}")
+            if timeout < 1.0:
+                self.logger.warning(
+                    f"Sub-second timeout specified ({timeout}s). "
+                    f"Workflow may timeout immediately for complex operations.",
+                    extra={
+                        'workflow_type': workflow_type,
+                        'timeout_seconds': timeout,
+                        'warning_type': 'sub_second_timeout'
+                    }
+                )
+            
+            # Create and wrap workflow execution in asyncio.wait_for with timeout
+            workflow_task = asyncio.create_task(
+                self._run_workflow_steps_async(workflow_type, workflow_data, results)
             )
-            self.logger.info(f"Completed workflow: {workflow_type}")
+            results = await asyncio.wait_for(workflow_task, timeout=timeout)
+            
+            self.logger.info(
+                f"Workflow completed successfully",
+                extra={
+                    'workflow_type': workflow_type,
+                    'total_steps': len(results.get('steps', [])),
+                    'event_type': 'workflow_completed'
+                }
+            )
             
         except asyncio.TimeoutError:
-            # Log detailed error message on timeout
-            completed_steps = [step.get('step', 'unknown') for step in results.get('steps', []) if isinstance(step, dict)]
+            # Cancel the workflow task to clean up resources
+            if workflow_task and not workflow_task.done():
+                workflow_task.cancel()
+                try:
+                    await workflow_task
+                except asyncio.CancelledError:
+                    pass  # Expected when we cancel the task
+            
+            # Extract completed steps with error handling
+            completed_steps = []
+            try:
+                steps_data = results.get('steps', [])
+                if not isinstance(steps_data, list):
+                    self.logger.error(
+                        f"Invalid steps data type: {type(steps_data).__name__}. Expected list.",
+                        extra={
+                            'workflow_type': workflow_type,
+                            'error_type': 'invalid_steps_format'
+                        }
+                    )
+                    steps_data = []
+                
+                for step in steps_data:
+                    if isinstance(step, dict):
+                        step_name = step.get('step', 'unknown')
+                        completed_steps.append(step_name)
+                    else:
+                        self.logger.warning(
+                            f"Invalid step format: {type(step).__name__}. Expected dict.",
+                            extra={
+                                'workflow_type': workflow_type,
+                                'error_type': 'invalid_step_format'
+                            }
+                        )
+            except Exception as e:
+                self.logger.error(
+                    f"Error extracting completed steps: {e}",
+                    extra={
+                        'workflow_type': workflow_type,
+                        'error_type': 'step_extraction_failed',
+                        'exception': str(e)
+                    }
+                )
+                completed_steps = []  # Fallback to empty list
+            
+            # Structured logging for timeout events (without sensitive data)
             self.logger.error(
-                f"Workflow timeout after {timeout}s: workflow_type='{workflow_type}', "
-                f"message_type='workflow', completed_steps={completed_steps}, "
-                f"total_completed={len(completed_steps)}"
+                "Workflow execution timed out",
+                extra={
+                    'workflow_type': workflow_type,
+                    'message_type': 'workflow',
+                    'timeout_seconds': timeout,
+                    'completed_steps_count': len(completed_steps),
+                    'completed_steps': completed_steps,  # Step names only, no data
+                    'event_type': 'workflow_timeout'
+                }
             )
             
             # Return response indicating timeout with partial progress
             results['status'] = 'timeout'
             results['error'] = f'Workflow execution timed out after {timeout} seconds'
             results['partial_progress'] = {
-                'completed_steps': completed_steps,
+                'completed_steps': completed_steps,  # Guaranteed to be a list
                 'total_steps_completed': len(completed_steps),
                 'timeout_seconds': timeout
             }
         
         except Exception as e:
-            # Handle other exceptions
-            self.logger.error(f"Error in async workflow execution: {e}")
+            # Cancel the workflow task to clean up resources
+            if workflow_task and not workflow_task.done():
+                workflow_task.cancel()
+                try:
+                    await workflow_task
+                except asyncio.CancelledError:
+                    pass
+            
+            # Structured logging for exceptions (without sensitive data)
+            self.logger.error(
+                "Error in async workflow execution",
+                extra={
+                    'workflow_type': workflow_type,
+                    'message_type': 'workflow',
+                    'error_type': type(e).__name__,
+                    'exception': str(e),
+                    'event_type': 'workflow_error'
+                }
+            )
             results['status'] = 'error'
             results['error'] = str(e)
         
@@ -301,11 +424,15 @@ class OrchestratorAgent(BaseAgent):
         Process a message asynchronously with timeout protection.
         
         Args:
-            message: Message to process
-            timeout: Timeout in seconds for workflow execution (default: 30.0)
+            message: Message to process containing 'type' and 'data' fields
+            timeout: Timeout in seconds for workflow execution (default: 30.0).
+                     Applies only to workflow messages. Sub-second timeouts are supported
+                     but may cause immediate timeout for complex workflows.
             
         Returns:
-            Response from processing the message
+            Dict[str, Any]: Response structure depends on message type and execution outcome.
+            See _execute_workflow_async() for workflow response structures.
+            Non-workflow messages return standard agent responses with 'status' and 'data' fields.
         """
         if not self.validate_message(message):
             return self.create_response('error', None, 'Invalid message format')

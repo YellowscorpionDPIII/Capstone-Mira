@@ -4,6 +4,34 @@
 
 The `OrchestratorAgent` now supports asynchronous workflow execution with built-in timeout protection to prevent hanging agents during workflow execution. This enhancement ensures that workflows complete within a specified time limit and provides detailed error logging and partial progress tracking when timeouts occur.
 
+## Recent Enhancements
+
+### Enhanced Timeout Handling
+- **Sub-second timeout support**: Timeouts less than 1 second are explicitly supported with warning logs
+- **Negative timeout validation**: Negative timeout values now raise a ValueError
+- **Graceful task cancellation**: Child tasks are properly canceled when timeouts occur to prevent resource leaks
+
+### Improved Partial Progress Extraction
+- **Robust error handling**: Parsing failures during step extraction are logged with detailed context
+- **Guaranteed list type**: `partial_progress.completed_steps` always returns a list, even on errors
+- **Fallback handling**: Malformed step data results in safe fallback values
+
+### Structured Logging
+- **Event-based logging**: Timeout and error events use structured logging with extra fields
+- **Key fields included**: `workflow_type`, `message_type`, `timeout_seconds`, `completed_steps_count`, `event_type`
+- **Sensitive data masking**: Full message contents and payload details are excluded from logs
+- **Step names only**: Only step identifiers are logged, not step data
+
+### API and Behavior Clarity
+- **Explicit documentation**: All possible response structures are documented (success, timeout, error)
+- **Field structure**: Clear definition of `status` and `partial_progress` fields
+- **Response normalization**: Consistent structure between `steps` and `partial_progress.completed_steps`
+
+### Backward Compatibility
+- **Sync path unaffected**: Synchronous workflow execution (`process()`) works identically as before
+- **Opt-in semantics**: Timeout protection only applies when using `process_async()`
+- **Shared helpers safe**: `_run_workflow_steps_async()` can be used by both sync and async paths
+
 ## Features
 
 ### 1. Asynchronous Workflow Execution
@@ -132,13 +160,15 @@ response = asyncio.run(run_plan())
 Process a message asynchronously with timeout protection.
 
 **Parameters:**
-- `message` (Dict[str, Any]): Message to process
+- `message` (Dict[str, Any]): Message to process containing 'type' and 'data' fields
 - `timeout` (float, optional): Timeout in seconds. Default: 30.0
+  - Sub-second timeouts (< 1.0s) are supported but may cause immediate timeout for complex workflows
+  - Negative timeouts will raise a ValueError
 
 **Returns:**
 - Dict[str, Any]: Response from processing the message
 
-**Example Response (Success):**
+**Example Response (Success - No Timeout):**
 ```python
 {
     'workflow_type': 'project_initialization',
@@ -176,10 +206,20 @@ Process a message asynchronously with timeout protection.
         }
     ],
     'partial_progress': {
-        'completed_steps': ['generate_plan'],
+        'completed_steps': ['generate_plan'],  # Guaranteed to be a list
         'total_steps_completed': 1,
         'timeout_seconds': 30.0
     }
+}
+```
+
+**Example Response (Error/Exception):**
+```python
+{
+    'workflow_type': 'project_initialization',
+    'status': 'error',
+    'error': 'Error message describing what went wrong',
+    'steps': [...]  # Steps completed before error (may be empty)
 }
 ```
 
@@ -211,22 +251,59 @@ Execute workflow steps asynchronously.
 ### Timeout Errors
 When a timeout occurs, the following happens:
 
-1. **Logging**: A detailed error message is logged with:
-   - Workflow type
-   - Message type
-   - Completed steps
-   - Total completed count
+1. **Task Cancellation**: The workflow task is gracefully canceled to prevent resource leaks
+   - `task.cancel()` is called on the running workflow task
+   - Awaits the task to handle `CancelledError` properly
 
-2. **Response**: The response includes:
+2. **Structured Logging**: A detailed error message is logged with:
+   - `workflow_type`: The type of workflow that timed out
+   - `message_type`: Always 'workflow' for workflow messages
+   - `timeout_seconds`: The timeout duration that was exceeded
+   - `completed_steps_count`: Number of steps completed before timeout
+   - `completed_steps`: List of step names (identifiers only, no data)
+   - `event_type`: Set to 'workflow_timeout'
+
+3. **Response Structure**: The response includes:
    - `status`: 'timeout'
    - `error`: Descriptive error message
    - `partial_progress`: Object with completion details
-   - `steps`: Array of completed steps
+     - `completed_steps`: List of completed step names (guaranteed to be a list)
+     - `total_steps_completed`: Count of completed steps
+     - `timeout_seconds`: The timeout value used
+   - `steps`: Array of completed steps with their results
 
 ### Other Exceptions
 General exceptions are caught and handled gracefully:
-- Logged with error level
-- Response includes `status: 'error'` and error message
+
+1. **Task Cancellation**: Similar cleanup as timeout errors
+2. **Structured Logging**: Error logged with:
+   - `workflow_type`: The type of workflow
+   - `message_type`: 'workflow'
+   - `error_type`: Exception class name
+   - `exception`: String representation of the exception
+   - `event_type`: Set to 'workflow_error'
+3. **Response Structure**: 
+   - `status`: 'error'
+   - `error`: Exception message
+   - `steps`: Steps completed before error (may be empty)
+   - **Note**: No `partial_progress` field for errors (distinct from timeouts)
+
+### Partial Progress Extraction Errors
+If errors occur while extracting completed steps:
+
+1. **Invalid steps format**: Logged with `error_type: 'invalid_steps_format'`
+2. **Invalid step format**: Logged with `error_type: 'invalid_step_format'`
+3. **Extraction failure**: Logged with `error_type: 'step_extraction_failed'`
+4. **Fallback**: Returns empty list `[]` to ensure consistent type
+
+### Sub-second Timeout Warnings
+When timeout is less than 1 second:
+
+1. **Warning logged** with:
+   - `workflow_type`: The workflow type
+   - `timeout_seconds`: The sub-second timeout value
+   - `warning_type`: Set to 'sub_second_timeout'
+2. **Workflow continues**: Not an error, just a warning about potential immediate timeout
 
 ## Best Practices
 
