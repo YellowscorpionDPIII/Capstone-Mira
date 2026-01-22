@@ -132,50 +132,51 @@ class OrchestratorAgent(BaseAgent):
         workflow_type = data.get('workflow_type')
         workflow_data = data.get('data', {})
         
-        results = {
-            'workflow_type': workflow_type,
-            'steps': []
-        }
-        
-        if workflow_type == 'project_initialization':
-            # Step 1: Generate project plan
-            plan_response = self._route_message({
-                'type': 'generate_plan',
-                'data': workflow_data
-            })
-            results['steps'].append({
-                'step': 'generate_plan',
-                'status': plan_response['status'],
-                'result': plan_response.get('data')
-            })
+        with self.metrics.timer(f'orchestrator.workflow.{workflow_type}'):
+            results = {
+                'workflow_type': workflow_type,
+                'steps': []
+            }
             
-            # Step 2: Assess risks based on plan
-            if plan_response['status'] == 'success':
-                plan = plan_response['data']
-                risk_response = self._route_message({
-                    'type': 'assess_risks',
-                    'data': plan
+            if workflow_type == 'project_initialization':
+                # Step 1: Generate project plan
+                plan_response = self._route_message({
+                    'type': 'generate_plan',
+                    'data': workflow_data
                 })
                 results['steps'].append({
-                    'step': 'assess_risks',
-                    'status': risk_response['status'],
-                    'result': risk_response.get('data')
+                    'step': 'generate_plan',
+                    'status': plan_response['status'],
+                    'result': plan_response.get('data')
                 })
                 
-                # Step 3: Generate initial status report
-                if risk_response['status'] == 'success':
-                    risks = risk_response['data']
-                    report_data = {**plan, 'risks': risks.get('risks', [])}
-                    report_response = self._route_message({
-                        'type': 'generate_report',
-                        'data': report_data
+                # Step 2: Assess risks based on plan
+                if plan_response['status'] == 'success':
+                    plan = plan_response['data']
+                    risk_response = self._route_message({
+                        'type': 'assess_risks',
+                        'data': plan
                     })
                     results['steps'].append({
-                        'step': 'generate_report',
-                        'status': report_response['status'],
-                        'result': report_response.get('data')
+                        'step': 'assess_risks',
+                        'status': risk_response['status'],
+                        'result': risk_response.get('data')
                     })
                     
+                    # Step 3: Generate initial status report
+                    if risk_response['status'] == 'success':
+                        risks = risk_response['data']
+                        report_data = {**plan, 'risks': risks.get('risks', [])}
+                        report_response = self._route_message({
+                            'type': 'generate_report',
+                            'data': report_data
+                        })
+                        results['steps'].append({
+                            'step': 'generate_report',
+                            'status': report_response['status'],
+                            'result': report_response.get('data')
+                        })
+                        
         self.logger.info(f"Completed workflow: {workflow_type}")
         return results
         
