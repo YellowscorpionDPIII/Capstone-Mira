@@ -41,6 +41,8 @@ class OrchestratorAgent(BaseAgent):
             'schedule_report': 'status_reporter_agent',
             'assess_governance': 'governance_agent',
             'check_human_validation': 'governance_agent'
+            'generate_roadmap': 'roadmapping_agent',
+            'track_kpi_progress': 'roadmapping_agent'
         }
         
     def register_agent(self, agent: BaseAgent):
