@@ -35,6 +35,7 @@ setup(
             'pytest>=7.0.0',
             'pytest-cov>=4.0.0',
             'pytest-benchmark>=4.0.0',
+            'locust>=2.0.0',
         ],
         'vault': [
             'hvac>=1.2.1',
