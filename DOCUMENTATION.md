@@ -511,6 +511,244 @@ class CustomIntegration(BaseIntegration):
 - `GoogleDocsIntegration`: Google Docs API integration
 - `PDFIntegration`: PDF processing
 
+## LangChain Prompt Optimizations for Governance
+
+### Overview
+
+Mira uses LangChain-optimized prompts for governance-related features to ensure consistent, reliable, and compliant AI-driven decision-making. These optimizations focus on risk assessment, compliance checking, and human-in-the-loop (HITL) approval workflows.
+
+### Governance Prompt Templates
+
+#### Risk Assessment Prompts
+
+The risk assessment agent uses structured prompts that follow LangChain best practices:
+
+```python
+# Example: Optimized risk assessment prompt template
+risk_assessment_prompt = """
+Analyze the following project for potential risks:
+
+Project: {project_name}
+Description: {description}
+Duration: {duration_weeks} weeks
+Task Count: {task_count}
+
+Identify risks in these categories:
+1. Schedule risks (timeline, dependencies)
+2. Resource risks (team capacity, expertise)
+3. Technical risks (technology complexity, integration)
+4. Compliance risks (regulatory, security)
+
+For each risk, provide:
+- Risk type and severity (low/medium/high/critical)
+- Impact description
+- Mitigation strategy
+
+Return structured JSON format.
+"""
+```
+
+**Optimization Techniques Applied:**
+
+1. **Clear Structure**: Prompts use explicit sections and formatting to guide the LLM
+2. **Constrained Output**: Requests specific output formats (JSON) for reliable parsing
+3. **Few-Shot Learning**: Include examples of well-formed risk assessments when appropriate
+4. **Temperature Control**: Lower temperature (0.3-0.5) for consistency in governance decisions
+5. **Token Optimization**: Concise prompts that balance context with efficiency
+
+#### Governance Decision Prompts
+
+For governance-related decisions requiring HITL approval:
+
+```python
+# Example: Governance decision prompt with chain-of-thought
+governance_decision_prompt = """
+Evaluate the following action for governance compliance:
+
+Action: {action_type}
+Context: {context}
+Risk Score: {risk_score}
+
+Step 1: Identify applicable governance policies
+Step 2: Assess compliance with each policy
+Step 3: Determine if human approval is required
+Step 4: Provide recommendation with justification
+
+Governance Thresholds:
+- Risk Score > 7: Requires HITL approval
+- Compliance Issues: Requires HITL approval
+- Budget > $10k: Requires HITL approval
+
+Provide structured analysis and recommendation.
+"""
+```
+
+**Key Features:**
+
+- **Chain-of-Thought Reasoning**: Breaks down complex governance decisions into steps
+- **Explicit Thresholds**: Clearly defines decision boundaries
+- **Context Injection**: Includes relevant policies and constraints
+- **Audit Trail**: Generates explanations for governance decisions
+
+### Prompt Engineering Best Practices
+
+#### 1. Context Window Management
+
+- **Prioritize Recent Context**: Most relevant governance policies first
+- **Summarization**: Use LangChain summarization chains for long documents
+- **Sliding Window**: Maintain only essential context for compliance checks
+
+#### 2. Output Parsing
+
+```python
+from langchain.output_parsers import StructuredOutputParser, ResponseSchema
+
+# Define governance response schema
+response_schemas = [
+    ResponseSchema(name="risk_level", description="Risk level: low, medium, high, or critical"),
+    ResponseSchema(name="requires_approval", description="Boolean: true if HITL approval needed"),
+    ResponseSchema(name="justification", description="Explanation for the decision"),
+    ResponseSchema(name="mitigation_actions", description="List of recommended mitigation actions")
+]
+
+output_parser = StructuredOutputParser.from_response_schemas(response_schemas)
+```
+
+#### 3. Prompt Chaining for Complex Governance Workflows
+
+For multi-step governance workflows, use LangChain's sequential chains:
+
+```python
+# Example: Governance workflow chain
+# Step 1: Risk Assessment
+risk_chain = LLMChain(llm=llm, prompt=risk_prompt)
+
+# Step 2: Compliance Check
+compliance_chain = LLMChain(llm=llm, prompt=compliance_prompt)
+
+# Step 3: Approval Routing
+approval_chain = LLMChain(llm=llm, prompt=approval_routing_prompt)
+
+# Combine into sequential chain
+governance_workflow = SequentialChain(
+    chains=[risk_chain, compliance_chain, approval_chain],
+    input_variables=["project_data"],
+    output_variables=["final_decision", "approval_required"]
+)
+```
+
+#### 4. Governance-Specific Prompt Patterns
+
+**Pattern 1: Constraint-Based Prompting**
+```python
+constraints_prompt = """
+Evaluate against these MANDATORY constraints:
+- Regulatory: {regulatory_requirements}
+- Security: {security_policies}
+- Budget: {budget_limits}
+
+Any violation requires immediate HITL escalation.
+"""
+```
+
+**Pattern 2: Role-Based Prompting**
+```python
+role_prompt = """
+You are a governance compliance officer responsible for:
+- Ensuring regulatory compliance
+- Identifying high-risk scenarios
+- Escalating issues requiring human oversight
+
+Maintain a conservative, risk-averse approach.
+"""
+```
+
+**Pattern 3: Evaluation Prompts with Rubrics**
+```python
+rubric_prompt = """
+Evaluate using this rubric:
+
+Risk Score Calculation:
+- Low Risk (1-3): Standard automated approval
+- Medium Risk (4-6): Enhanced monitoring, auto-approval with notification
+- High Risk (7-8): HITL approval required
+- Critical Risk (9-10): Immediate escalation to senior governance team
+
+Provide score and detailed justification.
+"""
+```
+
+### Monitoring and Optimization
+
+#### Prompt Performance Metrics
+
+Track these metrics for governance prompts:
+
+- **Consistency**: Same inputs yield similar outputs (track variance)
+- **Latency**: Response time for governance decisions (target: <2s)
+- **Accuracy**: Agreement with human governance decisions (target: >90%)
+- **Token Usage**: Average tokens per governance decision
+
+#### A/B Testing Governance Prompts
+
+```python
+# Example: Test two prompt variants
+prompt_variant_a = "Evaluate risks..."  # Control
+prompt_variant_b = "Using chain-of-thought, evaluate risks..."  # Test
+
+# Route 50% of requests to each variant
+# Measure: accuracy, consistency, latency
+# Select winner after statistical significance
+```
+
+#### Continuous Improvement
+
+1. **Feedback Loop**: Incorporate HITL corrections back into prompt examples
+2. **Prompt Versioning**: Track prompt changes and performance over time
+3. **Regular Audits**: Review governance decisions for bias and accuracy
+4. **Update Thresholds**: Adjust risk thresholds based on organizational learning
+
+### Integration with Orchestrator
+
+The orchestrator agent uses optimized prompts for routing governance requests:
+
+```python
+# Governance routing logic with prompt optimization
+async def route_governance_request(request):
+    # Use LangChain prompt template
+    routing_prompt = PromptTemplate(
+        input_variables=["request_type", "risk_score", "context"],
+        template="""
+        Route this governance request to the appropriate handler:
+        
+        Request: {request_type}
+        Risk Score: {risk_score}
+        Context: {context}
+        
+        Routing Rules:
+        - Risk Score < 7: automated_governance_handler
+        - Risk Score >= 7: hitl_approval_handler
+        - Compliance issues: compliance_review_handler
+        
+        Return handler name and routing justification.
+        """
+    )
+    
+    response = await llm_chain.run(
+        request_type=request.type,
+        risk_score=request.risk_score,
+        context=request.context
+    )
+    
+    return parse_routing_decision(response)
+```
+
+### Resources
+
+- **LangChain Documentation**: https://python.langchain.com/docs/
+- **Prompt Engineering Guide**: https://www.promptingguide.ai/
+- **Governance Patterns**: See `governance/risk_assessor.py` and `governance/hitl_handler.py` for implementation examples
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
