@@ -17,6 +17,14 @@ Modular multi-agent AI workflow system for technical program management. Automat
 - **🔌 Six Integration Adapters**
   - Trello, Jira, GitHub, Airtable, Google Docs, PDF
 
+- **🔐 API Key Management System**
+  - Secure API key generation with role-based access control (RBAC)
+  - Three roles: Viewer (read-only), Operator (execute), Admin (full access)
+  - Key expiration, rotation, and revocation
+  - Persistent storage with Airtable integration
+  - Authentication middleware for webhooks
+  - Complete audit logging
+
 - **📡 Event-Driven Architecture**
   - Message broker with publish-subscribe pattern
   - Webhook support for external integrations
@@ -77,6 +85,29 @@ Run the example:
 python examples/example_usage.py
 ```
 
+### API Key Management Quick Start
+
+Generate secure API keys for your integrations:
+
+```python
+from mira.auth import ApiKeyManager
+
+# Initialize manager
+manager = ApiKeyManager(default_expiry_days=90)
+
+# Generate an operator key for n8n workflows
+api_key, metadata = manager.generate_key(
+    role='operator',
+    name='n8n Automation Bot'
+)
+
+print(f"API Key: {api_key}")
+print(f"Role: {metadata.role}")
+print(f"Expires: {metadata.expires_at}")
+```
+
+See [docs/API_KEY_MANAGEMENT.md](docs/API_KEY_MANAGEMENT.md) for complete guide.
+
 ## 📚 Documentation
 
 See [DOCUMENTATION.md](DOCUMENTATION.md) for comprehensive documentation including:
@@ -85,6 +116,12 @@ See [DOCUMENTATION.md](DOCUMENTATION.md) for comprehensive documentation includi
 - Usage examples
 - Architecture overview
 - Extension guide
+
+**New**: [API Key Management Guide](docs/API_KEY_MANAGEMENT.md)
+- Role-based access control (RBAC)
+- n8n and webhook integrations
+- Security best practices
+- Complete API reference
 
 ### Supported Languages
 
