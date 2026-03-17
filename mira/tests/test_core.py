@@ -1,200 +1,210 @@
-"""Tests for core functionality."""
+"""Tests for core framework components."""
+import time
 import unittest
 from datetime import datetime, timedelta, timezone
+from typing import Any, Dict
+from unittest.mock import MagicMock
+
 from mira.core.message_broker import MessageBroker, get_broker
 from mira.core.base_agent import BaseAgent
 from mira.core.webhook_handler import WebhookAuthenticator
-from typing import Dict, Any
+from mira.llm.base import BaseLLM
 
 
-class TestAgent(BaseAgent):
-    """Test agent for testing purposes."""
-    
-    def process(self, message: Dict[str, Any]) -> Dict[str, Any]:
-        """Process test message."""
-        return self.create_response('success', message['data'])
+# ---------------------------------------------------------------------------
+# Minimal concrete agent for testing BaseAgent utilities
+# ---------------------------------------------------------------------------
 
+class _SimpleAgent(BaseAgent):
+    """Minimal concrete agent that satisfies the abstract interface."""
+
+    def __init__(self, name: str = "simple_agent"):
+        mock_llm = MagicMock(spec=BaseLLM)
+        super().__init__(llm=mock_llm, name=name)
+
+    def build_user_prompt(self, task: Dict[str, Any]) -> str:
+        return task.get("data", {}).get("prompt", "")
+
+
+# ---------------------------------------------------------------------------
+# MessageBroker tests
+# ---------------------------------------------------------------------------
 
 class TestMessageBroker(unittest.TestCase):
     """Test cases for MessageBroker."""
-    
+
     def setUp(self):
-        """Set up test fixtures."""
         self.broker = MessageBroker()
         self.received_messages = []
-        
+
     def tearDown(self):
-        """Clean up after tests."""
         if self.broker.running:
             self.broker.stop()
-            
+
     def test_subscribe_and_publish(self):
         """Test subscribing and publishing messages."""
         def handler(message):
             self.received_messages.append(message)
-            
-        self.broker.subscribe('test_event', handler)
+
+        self.broker.subscribe("test_event", handler)
         self.broker.start()
-        
-        self.broker.publish('test_event', {'value': 'test'})
-        
-        # Give broker time to process
-        import time
+        self.broker.publish("test_event", {"value": "test"})
         time.sleep(0.5)
-        
+
         self.assertEqual(len(self.received_messages), 1)
-        self.assertEqual(self.received_messages[0]['type'], 'test_event')
-        
+        self.assertEqual(self.received_messages[0]["type"], "test_event")
+
+    def test_multiple_subscribers(self):
+        """Multiple handlers for the same topic all receive the message."""
+        received_a = []
+        received_b = []
+
+        def handler_a(msg):
+            received_a.append(msg)
+
+        def handler_b(msg):
+            received_b.append(msg)
+
+        self.broker.subscribe("multi_topic", handler_a)
+        self.broker.subscribe("multi_topic", handler_b)
+        self.broker.start()
+        self.broker.publish("multi_topic", {"value": "shared"})
+        time.sleep(0.5)
+
+        self.assertEqual(len(received_a), 1)
+        self.assertEqual(len(received_b), 1)
+        self.assertEqual(received_a[0]["data"]["value"], "shared")
+        self.assertEqual(received_b[0]["data"]["value"], "shared")
+
     def test_unsubscribe(self):
-        """Test unsubscribing from messages."""
+        """Unsubscribed handler does not receive messages."""
         def handler(message):
             self.received_messages.append(message)
-            
-        self.broker.subscribe('test_event', handler)
-        self.broker.unsubscribe('test_event', handler)
+
+        self.broker.subscribe("test_event", handler)
+        self.broker.unsubscribe("test_event", handler)
         self.broker.start()
-        
-        self.broker.publish('test_event', {'value': 'test'})
-        
-        import time
+        self.broker.publish("test_event", {"value": "test"})
         time.sleep(0.5)
-        
+
         self.assertEqual(len(self.received_messages), 0)
-        
+
+    def test_publish_to_nonexistent_topic(self):
+        """Publishing to a topic with no subscribers does not raise."""
+        self.broker.start()
+        try:
+            self.broker.publish("nonexistent_topic", {"value": "ignored"})
+        except Exception as exc:
+            self.fail(f"publish raised unexpectedly: {exc}")
+
     def test_broker_singleton(self):
-        """Test broker singleton pattern."""
+        """get_broker() always returns the same instance."""
         broker1 = get_broker()
         broker2 = get_broker()
         self.assertIs(broker1, broker2)
 
 
-class TestBaseAgent(unittest.TestCase):
-    """Test cases for BaseAgent."""
-    
-    def test_agent_initialization(self):
-        """Test agent initialization."""
-        agent = TestAgent('test_agent', {'key': 'value'})
-        self.assertEqual(agent.agent_id, 'test_agent')
-        self.assertEqual(agent.config['key'], 'value')
-        
-    def test_validate_message(self):
-        """Test message validation."""
-        agent = TestAgent('test_agent')
-        
-        valid_message = {'type': 'test', 'data': {}}
-        self.assertTrue(agent.validate_message(valid_message))
-        
-        invalid_message = {'type': 'test'}
-        self.assertFalse(agent.validate_message(invalid_message))
-        
-    def test_create_response(self):
-        """Test response creation."""
-        agent = TestAgent('test_agent')
-        response = agent.create_response('success', {'result': 'ok'})
-        
-        self.assertEqual(response['status'], 'success')
-        self.assertEqual(response['agent_id'], 'test_agent')
-        self.assertEqual(response['data']['result'], 'ok')
-        self.assertIsNone(response['error'])
+# ---------------------------------------------------------------------------
+# BaseAgent utility tests
+# ---------------------------------------------------------------------------
 
+class TestBaseAgentUtilities(unittest.TestCase):
+    """Test the utility helpers on BaseAgent (validate_message, create_response)."""
+
+    def test_agent_name_and_id(self):
+        agent = _SimpleAgent("my_agent")
+        self.assertEqual(agent.name, "my_agent")
+        self.assertEqual(agent.agent_id, "my_agent")
+
+    def test_validate_message_valid(self):
+        agent = _SimpleAgent()
+        self.assertTrue(agent.validate_message({"type": "x", "data": {}}))
+
+    def test_validate_message_missing_type(self):
+        agent = _SimpleAgent()
+        self.assertFalse(agent.validate_message({"data": {}}))
+
+    def test_validate_message_missing_data(self):
+        agent = _SimpleAgent()
+        self.assertFalse(agent.validate_message({"type": "x"}))
+
+    def test_create_response_success(self):
+        agent = _SimpleAgent()
+        resp = agent.create_response("success", {"result": "ok"})
+        self.assertEqual(resp["status"], "success")
+        self.assertEqual(resp["agent_id"], "simple_agent")
+        self.assertEqual(resp["data"]["result"], "ok")
+        self.assertIsNone(resp["error"])
+
+    def test_create_response_error(self):
+        agent = _SimpleAgent()
+        resp = agent.create_response("error", None, "Something failed")
+        self.assertEqual(resp["status"], "error")
+        self.assertEqual(resp["error"], "Something failed")
+        self.assertIsNone(resp["data"])
+
+
+# ---------------------------------------------------------------------------
+# WebhookAuthenticator tests (unchanged from original)
+# ---------------------------------------------------------------------------
 
 class TestWebhookAuthenticator(unittest.TestCase):
     """Test cases for WebhookAuthenticator."""
-    
+
     def setUp(self):
-        """Set up test fixtures."""
         self.authenticator = WebhookAuthenticator()
-    
+
     def test_valid_timestamp_within_window(self):
-        """Test validation of a timestamp within the 5-minute window."""
-        # Create a timestamp 2 minutes ago
         timestamp = (datetime.now() - timedelta(minutes=2)).isoformat()
-        result = self.authenticator.validate_signature_timestamp(timestamp)
-        self.assertTrue(result)
-    
+        self.assertTrue(self.authenticator.validate_signature_timestamp(timestamp))
+
     def test_valid_timestamp_just_within_window(self):
-        """Test validation of a timestamp at 299 seconds (just within window)."""
-        # Create a timestamp 299 seconds ago
         timestamp = (datetime.now() - timedelta(seconds=299)).isoformat()
-        result = self.authenticator.validate_signature_timestamp(timestamp)
-        self.assertTrue(result)
-    
+        self.assertTrue(self.authenticator.validate_signature_timestamp(timestamp))
+
     def test_timestamp_exactly_at_boundary(self):
-        """Test validation of a timestamp at exactly 300 seconds."""
-        # Create a timestamp exactly 300 seconds ago
         timestamp = (datetime.now() - timedelta(seconds=300)).isoformat()
-        result = self.authenticator.validate_signature_timestamp(timestamp)
-        # Should be False as it's not less than 300
-        self.assertFalse(result)
-    
+        self.assertFalse(self.authenticator.validate_signature_timestamp(timestamp))
+
     def test_timestamp_outside_window(self):
-        """Test validation of a timestamp outside the 5-minute window."""
-        # Create a timestamp 10 minutes ago
         timestamp = (datetime.now() - timedelta(minutes=10)).isoformat()
-        result = self.authenticator.validate_signature_timestamp(timestamp)
-        self.assertFalse(result)
-    
+        self.assertFalse(self.authenticator.validate_signature_timestamp(timestamp))
+
     def test_timestamp_just_outside_window(self):
-        """Test validation of a timestamp at 301 seconds (just outside window)."""
-        # Create a timestamp 301 seconds ago
         timestamp = (datetime.now() - timedelta(seconds=301)).isoformat()
-        result = self.authenticator.validate_signature_timestamp(timestamp)
-        self.assertFalse(result)
-    
+        self.assertFalse(self.authenticator.validate_signature_timestamp(timestamp))
+
     def test_future_timestamp_within_window(self):
-        """Test validation of a future timestamp within the window."""
-        # Create a timestamp 2 minutes in the future
         timestamp = (datetime.now() + timedelta(minutes=2)).isoformat()
-        result = self.authenticator.validate_signature_timestamp(timestamp)
-        # Should be True as we use abs() for time difference
-        self.assertTrue(result)
-    
+        self.assertTrue(self.authenticator.validate_signature_timestamp(timestamp))
+
     def test_future_timestamp_outside_window(self):
-        """Test validation of a future timestamp outside the window."""
-        # Create a timestamp 10 minutes in the future
         timestamp = (datetime.now() + timedelta(minutes=10)).isoformat()
-        result = self.authenticator.validate_signature_timestamp(timestamp)
-        self.assertFalse(result)
-    
+        self.assertFalse(self.authenticator.validate_signature_timestamp(timestamp))
+
     def test_malformed_timestamp_empty_string(self):
-        """Test handling of empty string timestamp."""
-        result = self.authenticator.validate_signature_timestamp("")
-        self.assertFalse(result)
-    
+        self.assertFalse(self.authenticator.validate_signature_timestamp(""))
+
     def test_malformed_timestamp_invalid_format(self):
-        """Test handling of invalid timestamp format."""
-        result = self.authenticator.validate_signature_timestamp("not-a-timestamp")
-        self.assertFalse(result)
-    
+        self.assertFalse(self.authenticator.validate_signature_timestamp("not-a-timestamp"))
+
     def test_malformed_timestamp_invalid_date(self):
-        """Test handling of invalid date values."""
-        result = self.authenticator.validate_signature_timestamp("2023-13-45T99:99:99")
-        self.assertFalse(result)
-    
+        self.assertFalse(self.authenticator.validate_signature_timestamp("2023-13-45T99:99:99"))
+
     def test_malformed_timestamp_none(self):
-        """Test handling of None as timestamp."""
-        result = self.authenticator.validate_signature_timestamp(None)
-        self.assertFalse(result)
-    
+        self.assertFalse(self.authenticator.validate_signature_timestamp(None))
+
     def test_malformed_timestamp_number(self):
-        """Test handling of number instead of string."""
-        result = self.authenticator.validate_signature_timestamp(12345)
-        self.assertFalse(result)
-    
+        self.assertFalse(self.authenticator.validate_signature_timestamp(12345))
+
     def test_timestamp_with_timezone(self):
-        """Test validation of timestamp with timezone information."""
-        # Create a timestamp with UTC timezone
         timestamp = datetime.now(timezone.utc).isoformat()
-        result = self.authenticator.validate_signature_timestamp(timestamp)
-        self.assertTrue(result)
-    
+        self.assertTrue(self.authenticator.validate_signature_timestamp(timestamp))
+
     def test_timestamp_with_timezone_old(self):
-        """Test validation of old timestamp with timezone information."""
-        # Create a timestamp 10 minutes ago with UTC timezone
         timestamp = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
-        result = self.authenticator.validate_signature_timestamp(timestamp)
-        self.assertFalse(result)
+        self.assertFalse(self.authenticator.validate_signature_timestamp(timestamp))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

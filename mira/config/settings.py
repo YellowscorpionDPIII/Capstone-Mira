@@ -105,6 +105,17 @@ class Config:
                 'orchestrator_agent': {
                     'enabled': True
                 }
+            },
+            'llm': {
+                'mode': 'router',
+                'claude_model': 'claude-3-7-sonnet-latest',
+                'cheap_model': 'gpt-4.1-mini',
+                'local_model': 'llama3.1',
+                'routing': {
+                    'default_complexity': 'auto',
+                    'code_to_claude': True,
+                    'long_to_claude_threshold': 1500,
+                },
             }
         }
         
@@ -124,7 +135,15 @@ class Config:
             prefix = f'MIRA_{integration.upper()}_'
             if os.getenv(f'{prefix}ENABLED'):
                 self.config_data['integrations'][integration]['enabled'] = os.getenv(f'{prefix}ENABLED') == 'true'
-                
+
+        # LLM config overrides
+        if os.getenv('MIRA_LLM_MODE'):
+            self.config_data['llm']['mode'] = os.getenv('MIRA_LLM_MODE')
+        if os.getenv('ANTHROPIC_API_KEY'):
+            self.config_data['llm']['anthropic_api_key'] = os.getenv('ANTHROPIC_API_KEY')
+        if os.getenv('OPENAI_API_KEY'):
+            self.config_data['llm']['openai_api_key'] = os.getenv('OPENAI_API_KEY')
+
         self.logger.info("Loaded configuration from environment variables")
         
     def get(self, key: str, default: Any = None) -> Any:

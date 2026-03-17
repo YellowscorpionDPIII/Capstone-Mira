@@ -35,6 +35,12 @@ setup(
             'pytest>=7.0.0',
             'pytest-cov>=4.0.0',
             'pytest-benchmark>=4.0.0',
+            'pytest-asyncio>=0.23.0',
+        ],
+        'llm': [
+            'anthropic>=1.40.0',
+            'openai>=1.30.0',
+            'httpx>=0.27.0',
         ],
         'vault': [
             'hvac>=1.2.1',
@@ -46,6 +52,9 @@ setup(
             'watchdog>=3.0.0',
         ],
         'all': [
+            'anthropic>=1.40.0',
+            'openai>=1.30.0',
+            'httpx>=0.27.0',
             'hvac>=1.2.1',
             'kubernetes>=28.1.0',
             'watchdog>=3.0.0',

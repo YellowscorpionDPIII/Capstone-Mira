@@ -1,72 +1,91 @@
 """Base agent class for all Mira agents."""
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
 from datetime import datetime
+from typing import Any, Dict, Optional, Type
+
 import logging
+
+from mira.llm.base import BaseLLM
 
 
 class BaseAgent(ABC):
     """
     Abstract base class for all agents in the Mira platform.
-    
-    All agents must implement the process() method to handle messages.
+
+    Subclasses must implement ``build_user_prompt`` and may override
+    ``output_schema`` and ``postprocess``.
     """
-    
-    def __init__(self, agent_id: str, config: Optional[Dict[str, Any]] = None):
-        """
-        Initialize the base agent.
-        
-        Args:
-            agent_id: Unique identifier for this agent
-            config: Optional configuration dictionary
-        """
-        self.agent_id = agent_id
-        self.config = config or {}
-        self.logger = logging.getLogger(f"mira.agent.{agent_id}")
+
+    def __init__(
+        self,
+        llm: Optional[BaseLLM],
+        name: str,
+        system_prompt: str = "",
+    ) -> None:
+        self.llm = llm
+        self.name = name
+        self.agent_id = name          # kept for backwards-compat with broker/registry
+        self.system_prompt = system_prompt
+        self.logger = logging.getLogger(f"mira.agent.{name}")
         self.created_at = datetime.utcnow()
-        
+
+    # ------------------------------------------------------------------
+    # Public async contract
+    # ------------------------------------------------------------------
+
+    async def process(self, task: Dict[str, Any], complexity: str = "auto") -> Dict[str, Any]:
+        """
+        Process a task dict and return a result dict.
+
+        Args:
+            task:       Message/task dictionary (must contain at least 'type' and 'data').
+            complexity: Routing hint forwarded to the LLM router.
+
+        Returns:
+            Result dict produced by ``postprocess``.
+        """
+        messages = [
+            {"role": "system", "content": self.system_prompt},
+            {"role": "user",   "content": self.build_user_prompt(task)},
+        ]
+        resp = await self.llm.generate(
+            messages,
+            schema=self.output_schema(),
+            complexity=complexity,
+        )
+        return self.postprocess(resp["text"], raw=resp["raw"])
+
     @abstractmethod
-    def process(self, message: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Process an incoming message and return a response.
-        
-        Args:
-            message: Message dictionary containing type, data, and metadata
-            
-        Returns:
-            Response dictionary with processing results
-        """
-        pass
-    
+    def build_user_prompt(self, task: Dict[str, Any]) -> str:
+        """Build the user-facing prompt from the task dict."""
+
+    def output_schema(self) -> Optional[Type]:
+        """Return the Pydantic model class for structured output, or None."""
+        return None
+
+    def postprocess(self, parsed: Any, raw: Any) -> Dict[str, Any]:
+        """Convert the parsed LLM response into the final result dict."""
+        return {"agent": self.name, "result": parsed, "raw": raw}
+
+    # ------------------------------------------------------------------
+    # Utility helpers (kept from original BaseAgent)
+    # ------------------------------------------------------------------
+
     def validate_message(self, message: Dict[str, Any]) -> bool:
-        """
-        Validate that a message has required fields.
-        
-        Args:
-            message: Message to validate
-            
-        Returns:
-            True if valid, False otherwise
-        """
-        required_fields = ['type', 'data']
-        return all(field in message for field in required_fields)
-    
-    def create_response(self, status: str, data: Any, error: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Create a standardized response message.
-        
-        Args:
-            status: Status of the operation (success, error, pending)
-            data: Response data
-            error: Optional error message
-            
-        Returns:
-            Standardized response dictionary
-        """
+        """Return True if the message contains required 'type' and 'data' fields."""
+        return all(field in message for field in ("type", "data"))
+
+    def create_response(
+        self,
+        status: str,
+        data: Any,
+        error: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Create a standardised synchronous response dict."""
         return {
-            'agent_id': self.agent_id,
-            'timestamp': datetime.utcnow().isoformat(),
-            'status': status,
-            'data': data,
-            'error': error
+            "agent_id": self.agent_id,
+            "timestamp": datetime.utcnow().isoformat(),
+            "status": status,
+            "data": data,
+            "error": error,
         }

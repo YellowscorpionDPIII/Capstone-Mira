@@ -4,11 +4,15 @@ from mira.agents.project_plan_agent import ProjectPlanAgent
 from mira.agents.risk_assessment_agent import RiskAssessmentAgent
 from mira.agents.status_reporter_agent import StatusReporterAgent
 from mira.agents.governance_agent import GovernanceAgent
+from mira.agents.roadmapping_agent import RoadmappingAgent
+from mira.agents.tool_recommender_agent import ToolRecommenderAgent
 
 __all__ = [
     'OrchestratorAgent',
     'ProjectPlanAgent',
     'RiskAssessmentAgent',
     'StatusReporterAgent',
-    'GovernanceAgent'
+    'GovernanceAgent',
+    'RoadmappingAgent',
+    'ToolRecommenderAgent',
 ]
