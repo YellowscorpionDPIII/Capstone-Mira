@@ -1,5 +1,6 @@
 """GovernanceAgent – assesses governance risk and HITL requirements via LLM."""
 import json
+import logging
 import os
 from typing import Any, Dict, Optional, Type
 
@@ -9,9 +10,7 @@ from mira.core.base_agent import BaseAgent
 from mira.llm.base import BaseLLM
 from mira.llm.schemas import GovernanceAssessmentOutput
 
-# Constants for compliance level mapping defaults
-DEFAULT_COMPLIANCE_VALUE = 0
-DEFAULT_THRESHOLD_VALUE = 2
+_logger = logging.getLogger("mira.agent.governance")
 
 
 def _load_thresholds_from_yaml() -> Dict[str, Any]:
@@ -26,8 +25,11 @@ def _load_thresholds_from_yaml() -> Dict[str, Any]:
                 data = yaml.safe_load(f)
                 if data and "thresholds" in data:
                     return data["thresholds"]
-    except Exception:
-        pass
+    except Exception as exc:
+        _logger.warning(
+            "Failed to load governance thresholds from %s: %s. Using defaults.",
+            config_path, exc,
+        )
     return {}
 
 
@@ -44,6 +46,29 @@ def _build_governance_system_prompt(thresholds: Dict[str, Any]) -> str:
         f"  - Explainability score threshold: {explainability}\n"
         "Return a structured governance assessment."
     )
+
+
+def _validate_thresholds(thresholds: Dict[str, Any]) -> None:
+    """Raise ValueError if threshold values are invalid."""
+    if "financial_threshold" in thresholds:
+        val = thresholds["financial_threshold"]
+        if not isinstance(val, (int, float)) or val < 0:
+            raise ValueError(
+                f"financial_threshold must be a non-negative number, got {val!r}"
+            )
+    if "explainability_threshold" in thresholds:
+        val = thresholds["explainability_threshold"]
+        if not isinstance(val, (int, float)) or not (0.0 <= val <= 1.0):
+            raise ValueError(
+                f"explainability_threshold must be a float in [0, 1], got {val!r}"
+            )
+    if "compliance_threshold" in thresholds:
+        val = thresholds["compliance_threshold"]
+        valid = {"low", "medium", "high", "critical"}
+        if val not in valid:
+            raise ValueError(
+                f"compliance_threshold must be one of {valid}, got {val!r}"
+            )
 
 
 class GovernanceAgent(BaseAgent):
@@ -79,6 +104,8 @@ class GovernanceAgent(BaseAgent):
 
     def update_thresholds(self, thresholds: Dict[str, Any]) -> None:
         """Update governance thresholds and regenerate the system prompt."""
+        _validate_thresholds(thresholds)
+
         if "financial_threshold" in thresholds:
             self.financial_threshold = thresholds["financial_threshold"]
         if "compliance_threshold" in thresholds:

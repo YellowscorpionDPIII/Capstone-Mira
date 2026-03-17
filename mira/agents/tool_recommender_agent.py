@@ -135,7 +135,9 @@ class ToolRecommenderAgent(BaseAgent):
     # ------------------------------------------------------------------
 
     def build_user_prompt(self, task: Dict[str, Any]) -> str:
-        description = task.get("data", {}).get("description", "")
+        description = task.get("data", {}).get("description", "").strip()
+        if not description:
+            raise ValueError("ToolRecommenderAgent requires a non-empty 'description' in task data.")
         return f"User task description: {description}"
 
     def output_schema(self) -> Optional[Type]:
@@ -159,16 +161,14 @@ class ToolRecommenderAgent(BaseAgent):
     # Core recommendation logic
     # ------------------------------------------------------------------
 
-    def classify_use_case(self, user_description: str) -> str:
+    async def classify_use_case(self, user_description: str) -> str:
         """
         Use the LLM to map a free-form description to a leaf key.
 
-        This is the synchronous wrapper; the async path goes through
-        ``process()``.  Useful for interactive / scripted usage.
+        Async – await this method or call it via ``process()``.
         """
-        import asyncio
         task = {"type": "recommend_tool", "data": {"description": user_description}}
-        result = asyncio.run(self.process(task))
+        result = await self.process(task)
         return result.get("leaf_key", "general_research")
 
     def get_recommendation(self, leaf_key: str) -> Dict[str, Any]:
@@ -193,8 +193,10 @@ class ToolRecommenderAgent(BaseAgent):
         tool_key = rec_meta["toolKey"]
         reason_key = rec_meta["reasonKey"]
 
-        tool = self.model_registry["tools"].get(tool_key, {})
-        reason = self.model_registry["reasons"].get(reason_key, "")
+        tools_registry = self.model_registry.get("tools", {})
+        reasons_registry = self.model_registry.get("reasons", {})
+        tool = tools_registry.get(tool_key, {})
+        reason = reasons_registry.get(reason_key, "")
 
         return {
             "tool": tool.get("displayName", tool_key),

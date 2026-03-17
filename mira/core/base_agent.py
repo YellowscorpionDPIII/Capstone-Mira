@@ -48,6 +48,11 @@ class BaseAgent(ABC):
             {"role": "system", "content": self.system_prompt},
             {"role": "user",   "content": self.build_user_prompt(task)},
         ]
+        if self.llm is None:
+            raise RuntimeError(
+                f"Agent '{self.name}' has no LLM configured. "
+                "Override process() or pass an LLM at construction time."
+            )
         resp = await self.llm.generate(
             messages,
             schema=self.output_schema(),
