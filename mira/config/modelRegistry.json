@@ -1,0 +1,47 @@
+{
+  "version": "2026-02-24",
+  "tools": {
+    "claude": {
+      "displayName": "Claude 3.5 Sonnet",
+      "provider": "Anthropic",
+      "capabilities": ["complex_coding", "review_coding", "technical_writing"],
+      "notes": "High reasoning and code analysis; strong at explanation."
+    },
+    "chatgpt": {
+      "displayName": "ChatGPT GPT-4o",
+      "provider": "OpenAI",
+      "capabilities": ["professional_writing", "creative_writing", "quick_coding"],
+      "notes": "Great polish and conversational tone."
+    },
+    "perplexity": {
+      "displayName": "Perplexity (Search + GPT-4.1)",
+      "provider": "Perplexity",
+      "capabilities": ["current_research", "product_research", "general_research"],
+      "notes": "Live web, citations, current events."
+    },
+    "gemini": {
+      "displayName": "Gemini 1.5 Pro",
+      "provider": "Google",
+      "capabilities": ["image_work", "presentations", "mixed_media"],
+      "notes": "Strong multimodal + Google Workspace."
+    }
+  },
+  "reasons": {
+    "complex_coding": "Excels at reasoning through complex algorithms and multi-step coding problems.",
+    "review_coding": "Best for detailed code analysis and identifying potential issues.",
+    "quick_coding": "Handles quick coding tasks and common patterns efficiently.",
+    "learning_coding": "Clear, patient explanations great for learning.",
+    "professional_writing": "Produces polished, professional prose with excellent flow.",
+    "creative_writing": "Balances polish with nuanced storytelling.",
+    "technical_writing": "Maintains technical accuracy and clarity.",
+    "social_writing": "Engaging, conversational tone for social media.",
+    "current_research": "Built for real-time information with citations.",
+    "academic_research": "Combines source gathering and synthesis.",
+    "product_research": "Aggregates reviews and specs from multiple sources.",
+    "general_research": "Quick sourced answers with minimal friction.",
+    "image_work": "Strong image understanding and Google integration.",
+    "data_viz": "Generates visualization code and helps interpret data.",
+    "presentations": "Google Slides integration and multimodal capabilities.",
+    "mixed_media": "Handles multiple content types in one workflow."
+  }
+}

@@ -1,9 +1,46 @@
 """Webhook handler for external integrations."""
 from typing import Dict, Any, Callable, Optional
 from flask import Flask, request, jsonify
+from datetime import datetime
 import logging
 import hmac
 import hashlib
+
+
+class WebhookAuthenticator:
+    """
+    Authenticate and validate webhook requests.
+    
+    Provides methods for verifying webhook signatures and timestamps.
+    """
+    
+    def validate_signature_timestamp(self, timestamp: str) -> bool:
+        """
+        Validate if a timestamp is within an acceptable time window.
+        
+        Args:
+            timestamp: Timestamp string in ISO 8601 format
+            
+        Returns:
+            True if the timestamp is less than 300 seconds (5 minutes) old, False otherwise
+            
+        Raises:
+            No exceptions are raised; malformed timestamps return False
+        """
+        try:
+            # Parse the timestamp using datetime.fromisoformat
+            parsed_timestamp = datetime.fromisoformat(timestamp)
+            
+            # Calculate the time difference between now and the provided timestamp
+            current_time = datetime.now(parsed_timestamp.tzinfo)
+            time_difference = abs((current_time - parsed_timestamp).total_seconds())
+            
+            # Return True if difference is less than 300 seconds (5 minutes)
+            return time_difference < 300
+            
+        except (ValueError, TypeError, AttributeError):
+            # Handle malformed timestamps by returning False
+            return False
 
 
 class WebhookHandler:

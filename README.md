@@ -7,11 +7,12 @@ Modular multi-agent AI workflow system for technical program management. Automat
 
 ## 🚀 Features
 
-- **🤖 Four Specialized Agents**
+- **🤖 Five Specialized Agents**
   - ProjectPlanAgent: Generate comprehensive project plans
   - RiskAssessmentAgent: Identify and assess project risks
   - StatusReporterAgent: Create weekly status reports
   - OrchestratorAgent: Coordinate multi-agent workflows
+  - GovernanceAgent: Risk assessment and human-in-the-loop validation
 
 - **🔌 Six Integration Adapters**
   - Trello, Jira, GitHub, Airtable, Google Docs, PDF
@@ -23,8 +24,17 @@ Modular multi-agent AI workflow system for technical program management. Automat
 
 - **⚙️ Flexible Configuration**
   - JSON configuration files
+  - YAML governance thresholds for runtime tuning
   - Environment variable support
   - Modular and extensible design
+
+- **🛡️ Governance & Compliance**
+  - Configurable financial impact thresholds
+  - Compliance level assessment (low, medium, high, critical)
+  - Explainability score validation
+  - Human-in-the-loop validation for high-risk workflows
+  - Pub/sub notifications for pending approvals
+  - Structured logging for observability
 
 ## 📦 Installation
 
@@ -76,6 +86,16 @@ See [DOCUMENTATION.md](DOCUMENTATION.md) for comprehensive documentation includi
 - Architecture overview
 - Extension guide
 
+### Supported Languages
+
+<!-- Badge reflects current translation status from docs/wiki/Localization.md - update counts as languages are completed -->
+[![Languages](https://img.shields.io/badge/languages-6_total_(1_complete%2C_1_in_progress%2C_4_planned)-blue.svg)](docs/wiki/Localization.md)
+
+### Wiki
+
+Additional documentation is available in our [Wiki](docs/wiki/Home.md):
+- [Localization Guide](docs/wiki/Localization.md) - Setup, contribution guidelines, and adding new languages
+
 ## 🧪 Testing
 
 ```bash
@@ -95,7 +115,8 @@ Capstone-Mira/
 │   │   ├── project_plan_agent.py
 │   │   ├── risk_assessment_agent.py
 │   │   ├── status_reporter_agent.py
-│   │   └── orchestrator_agent.py
+│   │   ├── orchestrator_agent.py
+│   │   └── governance_agent.py
 │   ├── integrations/          # External service integrations
 │   │   ├── trello_integration.py
 │   │   ├── jira_integration.py
@@ -113,8 +134,11 @@ Capstone-Mira/
 │   │   └── logging.py
 │   ├── tests/                 # Test suite
 │   └── app.py                 # Main application
+├── config/                    # Configuration files
+│   └── governance_config.yaml # Governance thresholds
 ├── examples/                  # Example scripts
-│   └── example_usage.py
+│   ├── example_usage.py
+│   └── governance_example.py
 ├── requirements.txt
 ├── setup.py
 ├── DOCUMENTATION.md
@@ -125,6 +149,255 @@ Capstone-Mira/
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
+- **Translations**: Help make Mira available in more languages - see our [Localization Guide](docs/wiki/Localization.md)
+
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🚀 Production Deployment
+
+### Overview
+
+Mira is production-ready with built-in support for:
+- **Secrets Management**: Vault and Kubernetes secrets integration with retry logic
+- **Structured Logging**: JSON logging with correlation IDs for distributed tracing
+- **Graceful Shutdown**: Priority-based shutdown handlers for clean termination
+- **Health Checks**: Kubernetes-compatible readiness/liveness probes
+
+### Containerization
+
+Build and run Mira in a container:
+
+```dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Copy application files
+COPY . /app
+
+# Install dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Install optional dependencies as needed
+# For Vault: pip install -e ".[vault]"
+# For Kubernetes: pip install -e ".[kubernetes]"
+# For all optional features: pip install -e ".[all]"
+
+# Expose webhook port
+EXPOSE 5000
+
+# Run the application
+CMD ["python", "-m", "mira.app"]
+```
+
+Build and run:
+
+```bash
+docker build -t mira:latest .
+docker run -p 5000:5000 mira:latest
+```
+
+### Kubernetes Deployment
+
+Example Kubernetes deployment with health checks:
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mira-deployment
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mira
+  template:
+    metadata:
+      labels:
+        app: mira
+    spec:
+      containers:
+      - name: mira
+        image: mira:latest
+        ports:
+        - containerPort: 5000
+        env:
+        - name: MIRA_WEBHOOK_ENABLED
+          value: "true"
+        - name: MIRA_WEBHOOK_PORT
+          value: "5000"
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 5000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 5000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mira-service
+spec:
+  selector:
+    app: mira
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 5000
+  type: LoadBalancer
+```
+
+### Configuration
+
+#### Secrets Management
+
+Enable Vault or Kubernetes secrets:
+
+```python
+from mira.utils.secrets_manager import initialize_secrets_manager
+
+# Use Vault
+initialize_secrets_manager(
+    backend="vault",
+    config={"url": "https://vault.example.com", "token": "..."}
+)
+
+# Use Kubernetes secrets
+initialize_secrets_manager(backend="k8s", config={"namespace": "default"})
+
+# Fetch secrets with retry
+from mira.utils.secrets_manager import get_secret
+api_key = get_secret("API_KEY", max_retries=3, delay=1.0)
+```
+
+#### Structured Logging
+
+Enable JSON logging with correlation tracking:
+
+```python
+from mira.utils.structured_logging import (
+    setup_structured_logging,
+    CorrelationContext,
+    get_structured_logger
+)
+
+# Setup JSON logging
+setup_structured_logging(level='INFO', format_json=True)
+
+# Use correlation context for traceability
+logger = get_structured_logger("my_module")
+with CorrelationContext(agent_id="agent_1", task_id="task_123"):
+    logger.info("Processing task", extra_field="value")
+```
+
+#### Graceful Shutdown
+
+Register shutdown callbacks with priorities:
+
+```python
+from mira.utils.shutdown_handler import (
+    initialize_shutdown_handler,
+    register_shutdown_callback
+)
+
+# Initialize shutdown handler
+initialize_shutdown_handler()
+
+# Register callbacks (lower priority number = executes first)
+def drain_agents():
+    # Drain agent queues
+    pass
+
+def close_connections():
+    # Close database connections
+    pass
+
+register_shutdown_callback(drain_agents, priority=5, name="drain_agents")
+register_shutdown_callback(close_connections, priority=15, name="close_db")
+```
+
+#### Health Checks
+
+The `/healthz` endpoint is automatically available when webhooks are enabled:
+
+```bash
+curl http://localhost:5000/healthz
+```
+
+Response example:
+```json
+{
+  "status": "healthy",
+  "checks": {
+    "configuration": "ok",
+    "agents": "ok",
+    "agent_count": 4,
+    "broker": "running"
+  }
+}
+```
+
+### Environment Variables
+
+Configure Mira using environment variables:
+
+```bash
+# Webhook configuration
+export MIRA_WEBHOOK_ENABLED=true
+export MIRA_WEBHOOK_PORT=5000
+export MIRA_WEBHOOK_SECRET=your-secret-key
+
+# Integration toggles
+export MIRA_GITHUB_ENABLED=true
+export MIRA_TRELLO_ENABLED=true
+
+# Logging
+export MIRA_LOG_LEVEL=INFO
+```
+
+### Dependencies
+
+Core dependencies (always installed):
+- Flask >= 3.0.0
+- Werkzeug >= 3.0.1
+
+Optional dependencies (install as needed):
+```bash
+# For Vault secrets
+pip install ".[vault]"
+
+# For Kubernetes integration
+pip install ".[kubernetes]"
+
+# For file monitoring
+pip install ".[monitoring]"
+
+# Install all optional features
+pip install ".[all]"
+```
+
+### Security Considerations
+
+1. **Secrets**: Never commit secrets to source code. Use environment variables or secret management systems.
+2. **Webhook Security**: Always set `MIRA_WEBHOOK_SECRET` for signature verification.
+3. **Network**: Use TLS/SSL in production with proper certificates.
+4. **Updates**: Regularly update dependencies to patch security vulnerabilities.
+
+For security scanning, use tools like:
+```bash
+# Dependency scanning
+pip install safety
+safety check
+
+# Secret scanning
+pip install detect-secrets
+detect-secrets scan
+```

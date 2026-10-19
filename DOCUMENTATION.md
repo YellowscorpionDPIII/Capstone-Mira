@@ -10,6 +10,7 @@ A modular multi-agent AI workflow system for technical program management. Autom
 - **RiskAssessmentAgent**: Identifies and assesses project risks with mitigation strategies
 - **StatusReporterAgent**: Creates weekly status reports with accomplishments and metrics
 - **OrchestratorAgent**: Routes messages between agents and coordinates multi-agent workflows
+- **GovernanceAgent**: Evaluates workflows for risk assessment and human-in-the-loop validation based on financial impact, compliance requirements, and explainability scores
 
 ### Integrations
 
@@ -120,6 +121,44 @@ Create a `config.json` file:
 }
 ```
 
+### Governance Configuration (YAML)
+
+Governance thresholds can be configured in `config/governance_config.yaml` for runtime tuning without redeployment:
+
+```yaml
+thresholds:
+  # Financial threshold in dollars - workflows exceeding this amount require human validation
+  financial_threshold: 10000
+  
+  # Compliance threshold level - can be 'low', 'medium', 'high', or 'critical'
+  # Workflows at or above this level may require additional review
+  compliance_threshold: 'medium'
+  
+  # Explainability threshold (0.0 to 1.0) - lower scores indicate less explainable decisions
+  # Workflows below this threshold require human validation
+  explainability_threshold: 0.7
+```
+
+Thresholds can also be configured programmatically:
+
+```python
+from mira.agents.governance_agent import GovernanceAgent
+
+# Custom thresholds via config parameter
+config = {
+    'financial_threshold': 50000,
+    'compliance_threshold': 'high',
+    'explainability_threshold': 0.6
+}
+agent = GovernanceAgent(config=config)
+
+# Or update thresholds at runtime
+agent.update_thresholds({
+    'financial_threshold': 75000,
+    'explainability_threshold': 0.5
+})
+```
+
 ### Environment Variables
 
 ```bash
@@ -228,6 +267,94 @@ workflow_message = {
 }
 
 result = orchestrator.process(workflow_message)
+```
+
+### Governance & Human-in-the-Loop Validation
+
+The GovernanceAgent evaluates workflows for risk assessment and determines when human validation is required:
+
+```python
+from mira.agents.governance_agent import GovernanceAgent
+
+agent = GovernanceAgent()
+
+# Assess governance requirements
+message = {
+    'type': 'assess_governance',
+    'data': {
+        'workflow_id': 'wf-123',
+        'financial_impact': 50000,
+        'compliance_level': 'high',
+        'explainability_score': 0.6
+    }
+}
+
+response = agent.process(message)
+assessment = response['data']
+
+print(f"Risk Level: {assessment['risk_level']}")
+print(f"Requires Human Validation: {assessment['requires_human_validation']}")
+print(f"Reasons: {assessment['reasons']}")
+```
+
+**Integrate governance checks in workflows:**
+
+```python
+from mira.agents.orchestrator_agent import OrchestratorAgent
+
+orchestrator = OrchestratorAgent()
+
+# Workflow with governance data
+workflow_message = {
+    'type': 'workflow',
+    'data': {
+        'workflow_type': 'project_initialization',
+        'data': {
+            'name': 'High-Value Project',
+            'goals': ['Design', 'Develop', 'Deploy'],
+            'duration_weeks': 16
+        },
+        'governance_data': {
+            'workflow_id': 'proj-456',
+            'financial_impact': 250000,
+            'compliance_level': 'critical',
+            'explainability_score': 0.55
+        }
+    }
+}
+
+result = orchestrator.process(workflow_message)
+
+if result.get('status') == 'pending_approval':
+    print("⚠️ Workflow requires human approval")
+    print(f"Risk Level: {result['risk_level']}")
+    print(f"Reasons: {result['governance']['reasons']}")
+```
+
+**Monitor pending approvals via pub/sub:**
+
+```python
+from mira.core.message_broker import get_broker
+
+broker = get_broker()
+
+def handle_pending_approval(message):
+    """Handle workflows requiring human validation"""
+    data = message['data']
+    print(f"Pending approval for {data['workflow_type']}")
+    print(f"Governance: {data['governance']}")
+    # Send notification to dashboard, Slack, etc.
+
+# Subscribe to pending approval events
+broker.subscribe('governance.pending_approval', handle_pending_approval)
+broker.start()
+```
+
+**Error handling:** The orchestrator includes automatic fallback to 'low' risk on governance agent failures to prevent workflow halts.
+
+**Structured logging:** High-risk workflows generate warning logs for n8n integration and observability:
+```
+WARNING - High risk workflow proj-456: risk_level=high, financial_impact=$250000, ...
 ```
 
 ### Use Integrations

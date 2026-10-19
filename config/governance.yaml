@@ -1,0 +1,24 @@
+# config/governance.yaml
+risk_thresholds:
+  financial: 10000      # USD threshold for high risk
+  compliance: 0.8       # Compliance score (0-1)
+  explainability: 0.7   # AI explainability threshold (0-1)
+  total: 0.75           # Composite risk score threshold
+
+redis:
+  host: "localhost"
+  port: 6379
+  db: 0
+
+celery:
+  broker_url: "redis://localhost:6379/0"
+  result_backend: "redis://localhost:6379/0"
+
+jwt:
+  secret_key: "change-this-in-production!"
+  algorithm: "HS256"
+  expire_minutes: 30
+
+hitl:
+  timeout_seconds: 86400  # 24 hours auto-approve
+  reviewer_roles: ["hitl_reviewer", "admin"]

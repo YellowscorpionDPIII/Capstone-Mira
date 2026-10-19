@@ -135,6 +135,34 @@ class TestAirtableIntegration(unittest.TestCase):
         
         result = integration.sync_data('records', records)
         self.assertTrue(result['success'])
+    
+    def test_get_kpis(self):
+        """Test getting KPI data for an initiative."""
+        integration = AirtableIntegration({
+            'api_key': 'test_key',
+            'base_id': 'test_base'
+        })
+        integration.connect()
+        
+        result = integration.get_kpis('INIT-001')
+        
+        self.assertTrue(result['success'])
+        self.assertEqual(result['initiative_id'], 'INIT-001')
+        self.assertIn('ebit_pct', result)
+        self.assertIn('revenue_change', result)
+        self.assertIn('cost_reduction', result)
+        
+    def test_get_kpis_not_connected(self):
+        """Test getting KPI data when not connected."""
+        integration = AirtableIntegration({
+            'api_key': 'test_key',
+            'base_id': 'test_base'
+        })
+        
+        result = integration.get_kpis('INIT-001')
+        
+        self.assertFalse(result['success'])
+        self.assertIn('error', result)
 
 
 class TestGoogleDocsIntegration(unittest.TestCase):

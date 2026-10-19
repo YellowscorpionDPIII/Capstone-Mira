@@ -1,0 +1,38 @@
+{
+  "name": "Capstone-Mira DevContainer",
+  "image": "mcr.microsoft.com/devcontainers/python:3.11",
+
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {},
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+
+  "postCreateCommand": "pip install -r requirements.txt",
+
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "editor.formatOnSave": true
+      },
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-azuretools.vscode-docker"
+      ]
+    }
+  },
+
+  "runArgs": ["--init"],
+
+  "containerEnv": {
+    "PYTHONUNBUFFERED": "1",
+    "LOG_LEVEL": "INFO",
+    "VAULT_ADDR": "http://vault:8200",
+    "VAULT_TOKEN": "dev-only-token"
+  },
+
+  "mounts": [
+    "source=${localWorkspaceFolder}/app/config,target=/workspace/app/config,type=bind,consistency=cached"
+  ]
+}
